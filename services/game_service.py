@@ -20,49 +20,75 @@ def _get_sheet(sheet_name):
         traceback.print_exc()
         return None
 
+def _get_data_from_sheet(sheet):
+    """Lê todos os dados de uma planilha de forma segura, tratando planilhas vazias."""
+    try:
+        data = sheet.get_all_values()
+        if not data or not data[0]:
+            return [] # Retorna uma lista vazia se a planilha estiver vazia
+        
+        headers = data[0]
+        records = [dict(zip(headers, row)) for row in data[1:]]
+        return records
+    except Exception as e:
+        print(f"Erro ao ler dados da planilha: {e}")
+        traceback.print_exc()
+        return []
+
 def get_all_game_data():
     """Lê os dados das planilhas 'Jogos' e 'Desejos' e os retorna em formato JSON."""
     try:
         game_sheet = _get_sheet('Jogos')
-        if not game_sheet:
-            return None
-        games_data = game_sheet.get_all_records()
+        games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
 
         wishlist_sheet = _get_sheet('Desejos')
-        if not wishlist_sheet:
-            return None
-        wishlist_data = wishlist_sheet.get_all_records()
+        wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
+        
+        # Simula as estatísticas, pois a planilha está vazia
+        stats = {
+            'nivel_gamer': 0, 'rank_gamer': 'N/A', 'exp_nivel_atual': 0, 'exp_para_proximo_nivel': 100,
+            'total_jogos': len(games_data), 'total_na_fila': len([g for g in games_data if g.get('Status') == 'Na Fila']),
+            'total_horas_jogadas': sum([int(g.get('Tempo de Jogo', 0)) for g in games_data]),
+            'custo_total_biblioteca': sum([float(str(g.get('Preço', 0)).replace(',', '.')) for g in games_data]),
+            'media_notas': 0,
+            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
+            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data])
+        }
 
         return {
+            'estatisticas': stats,
             'biblioteca': games_data,
             'desejos': wishlist_data
         }
     except Exception as e:
         print(f"Erro ao buscar dados das planilhas: {e}")
         traceback.print_exc()
-        return None
+        return {
+            'estatisticas': {},
+            'biblioteca': [],
+            'desejos': []
+        }
 
 def add_game_to_sheet(game_data):
     """Adiciona um novo jogo à planilha 'Jogos' com todos os campos do frontend."""
     try:
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        
-        # Mapeia os dados do frontend para a ordem correta das colunas na sua planilha
+
         row_data = [
             game_data.get('Nome', ''),
             game_data.get('Plataforma', ''),
             game_data.get('Nota', ''),
             game_data.get('Preço', ''),
             game_data.get('Estilo', ''),
-            '', # Coluna 'Adquirido em' - Deixada vazia
-            '', # Coluna 'Início em' - Deixada vazia
-            '', # Coluna 'Terminado em' - Deixada vazia
-            '', # Coluna 'Conclusão' - Deixada vazia
+            '', # 'Adquirido em' - Deixada vazia
+            '', # 'Início em' - Deixada vazia
+            '', # 'Terminado em' - Deixada vazia
+            '', # 'Conclusão' - Deixada vazia
             game_data.get('Tempo de Jogo', ''),
             game_data.get('Conquistas Obtidas', ''),
             game_data.get('Platinado?', ''),
-            ''  # Coluna 'Abandonado?' - Deixada vazia
+            ''  # 'Abandonado?' - Deixada vazia
         ]
         
         sheet.append_row(row_data)
@@ -100,7 +126,6 @@ def update_game_in_sheet(game_name, updated_data):
         cell = sheet.find(game_name)
         if not cell: return {"success": False, "message": "Jogo não encontrado."}
 
-        # Mapeia as colunas da sua planilha
         update_map = {
             'Nome': 1, 'Plataforma': 2, 'Nota': 3, 'Preço': 4,
             'Estilo': 5, 'Adquirido em': 6, 'Início em': 7,
