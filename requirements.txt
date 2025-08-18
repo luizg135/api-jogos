@@ -1,0 +1,7 @@
+Flask
+Flask-Cors
+Flask-JWT-Extended
+gunicorn
+gspread
+oauth2client
+werkzeug
