@@ -47,23 +47,22 @@ def add_game_to_sheet(game_data):
     try:
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-
-        # Garante que todos os campos esperados pela planilha estejam presentes
-        # Adicionei os campos faltantes do frontend para o backend
+        
+        # Mapeia os dados do frontend para a ordem correta das colunas na sua planilha
         row_data = [
             game_data.get('Nome', ''),
             game_data.get('Plataforma', ''),
             game_data.get('Nota', ''),
             game_data.get('Preço', ''),
             game_data.get('Estilo', ''),
-            '', # Adquirido em (sempre vazio, pois não é coletado pelo form)
-            '', # Início em (sempre vazio)
-            '', # Terminado em (sempre vazio)
-            '', # Conclusão (sempre vazio)
+            '', # Coluna 'Adquirido em' - Deixada vazia
+            '', # Coluna 'Início em' - Deixada vazia
+            '', # Coluna 'Terminado em' - Deixada vazia
+            '', # Coluna 'Conclusão' - Deixada vazia
             game_data.get('Tempo de Jogo', ''),
             game_data.get('Conquistas Obtidas', ''),
             game_data.get('Platinado?', ''),
-            ''  # Abandonado? (sempre vazio)
+            ''  # Coluna 'Abandonado?' - Deixada vazia
         ]
         
         sheet.append_row(row_data)
