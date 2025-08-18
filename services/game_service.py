@@ -23,15 +23,18 @@ def _get_sheet(sheet_name):
 def _get_data_from_sheet(sheet):
     """Lê todos os dados de uma planilha de forma segura, tratando planilhas vazias."""
     try:
-        data = sheet.get_all_values()
-        if not data or not data[0]:
-            return [] # Retorna uma lista vazia se a planilha estiver vazia
-        
-        headers = data[0]
-        records = [dict(zip(headers, row)) for row in data[1:]]
+        records = sheet.get_all_records()
         return records
-    except Exception as e:
+    except gspread.exceptions.APIError as e:
+        # Se a planilha estiver vazia, o get_all_records() lança um erro.
+        # Capturamos esse erro e retornamos uma lista vazia.
+        if "unable to parse range" in str(e):
+            return []
         print(f"Erro ao ler dados da planilha: {e}")
+        traceback.print_exc()
+        return []
+    except Exception as e:
+        print(f"Erro genérico ao ler dados da planilha: {e}")
         traceback.print_exc()
         return []
 
@@ -44,13 +47,15 @@ def get_all_game_data():
         wishlist_sheet = _get_sheet('Desejos')
         wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
         
-        # Simula as estatísticas, pois a planilha está vazia
+        # Calcula as estatísticas a partir dos dados lidos
+        notas = [float(g.get('Nota', 0)) for g in games_data if g.get('Nota')]
         stats = {
             'nivel_gamer': 0, 'rank_gamer': 'N/A', 'exp_nivel_atual': 0, 'exp_para_proximo_nivel': 100,
-            'total_jogos': len(games_data), 'total_na_fila': len([g for g in games_data if g.get('Status') == 'Na Fila']),
-            'total_horas_jogadas': sum([int(g.get('Tempo de Jogo', 0)) for g in games_data]),
-            'custo_total_biblioteca': sum([float(str(g.get('Preço', 0)).replace(',', '.')) for g in games_data]),
-            'media_notas': 0,
+            'total_jogos': len(games_data), 
+            'total_na_fila': len([g for g in games_data if g.get('Status') == 'Na Fila']),
+            'total_horas_jogadas': sum([int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]),
+            'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
+            'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
             'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data])
         }
@@ -75,20 +80,21 @@ def add_game_to_sheet(game_data):
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
 
+        # Garante que todos os 13 campos esperados pela planilha estejam presentes
         row_data = [
             game_data.get('Nome', ''),
             game_data.get('Plataforma', ''),
             game_data.get('Nota', ''),
             game_data.get('Preço', ''),
             game_data.get('Estilo', ''),
-            '', # 'Adquirido em' - Deixada vazia
-            '', # 'Início em' - Deixada vazia
-            '', # 'Terminado em' - Deixada vazia
-            '', # 'Conclusão' - Deixada vazia
+            '', # 'Adquirido em' - Campo não coletado no frontend
+            '', # 'Início em' - Campo não coletado no frontend
+            '', # 'Terminado em' - Campo não coletado no frontend
+            '', # 'Conclusão' - Campo não coletado no frontend
             game_data.get('Tempo de Jogo', ''),
             game_data.get('Conquistas Obtidas', ''),
             game_data.get('Platinado?', ''),
-            ''  # 'Abandonado?' - Deixada vazia
+            ''  # 'Abandonado?' - Campo não coletado no frontend
         ]
         
         sheet.append_row(row_data)
