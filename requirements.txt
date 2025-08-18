@@ -5,3 +5,4 @@ gunicorn
 gspread
 oauth2client
 werkzeug
+pandas
