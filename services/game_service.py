@@ -26,8 +26,6 @@ def _get_data_from_sheet(sheet):
         records = sheet.get_all_records()
         return records
     except gspread.exceptions.APIError as e:
-        # Se a planilha estiver vazia, o get_all_records() lança um erro.
-        # Capturamos esse erro e retornamos uma lista vazia.
         if "unable to parse range" in str(e):
             return []
         print(f"Erro ao ler dados da planilha: {e}")
@@ -47,7 +45,6 @@ def get_all_game_data():
         wishlist_sheet = _get_sheet('Desejos')
         wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
         
-        # Calcula as estatísticas a partir dos dados lidos
         notas = [float(g.get('Nota', 0)) for g in games_data if g.get('Nota')]
         stats = {
             'nivel_gamer': 0, 'rank_gamer': 'N/A', 'exp_nivel_atual': 0, 'exp_para_proximo_nivel': 100,
@@ -74,27 +71,31 @@ def get_all_game_data():
             'desejos': []
         }
 
+# NOVO: Função de adicionar jogo ATUALIZADA
 def add_game_to_sheet(game_data):
     """Adiciona um novo jogo à planilha 'Jogos' com todos os campos do frontend."""
     try:
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
 
-        # Garante que todos os 13 campos esperados pela planilha estejam presentes
+        # IMPORTANTE: A ORDEM DOS ITENS ABAIXO DEVE SER A MESMA DAS SUAS COLUNAS NA PLANILHA
+        # Se sua planilha for diferente, reordene esta lista.
         row_data = [
             game_data.get('Nome', ''),
             game_data.get('Plataforma', ''),
+            game_data.get('Status', ''),
             game_data.get('Nota', ''),
             game_data.get('Preço', ''),
-            game_data.get('Estilo', ''),
-            '', # 'Adquirido em' - Campo não coletado no frontend
-            '', # 'Início em' - Campo não coletado no frontend
-            '', # 'Terminado em' - Campo não coletado no frontend
-            '', # 'Conclusão' - Campo não coletado no frontend
             game_data.get('Tempo de Jogo', ''),
             game_data.get('Conquistas Obtidas', ''),
             game_data.get('Platinado?', ''),
-            ''  # 'Abandonado?' - Campo não coletado no frontend
+            game_data.get('Estilo', ''),
+            game_data.get('Link', ''),
+            '',  # Coluna 'Adquirido em' - não usada pelo frontend
+            '',  # Coluna 'Início em' - não usada pelo frontend
+            game_data.get('Terminado em', ''), # NOVO: Salva a data de conclusão
+            '',  # Coluna 'Conclusão' - não usada pelo frontend
+            ''   # Coluna 'Abandonado?' - não usada pelo frontend
         ]
         
         sheet.append_row(row_data)
@@ -123,29 +124,44 @@ def add_wish_to_sheet(wish_data):
         traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar item de desejo."}
     
+# NOVO: Função de atualizar jogo ATUALIZADA
 def update_game_in_sheet(game_name, updated_data):
     """Atualiza as informações de um jogo existente na planilha 'Jogos'."""
     try:
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         
-        cell = sheet.find(game_name)
-        if not cell: return {"success": False, "message": "Jogo não encontrado."}
-
-        update_map = {
-            'Nome': 1, 'Plataforma': 2, 'Nota': 3, 'Preço': 4,
-            'Estilo': 5, 'Adquirido em': 6, 'Início em': 7,
-            'Terminado em': 8, 'Conclusão': 9, 'Tempo de Jogo': 10,
-            'Conquistas Obtidas': 11, 'Platinado?': 12, 'Abandonado?': 13
+        # Encontra a linha pelo nome original do jogo
+        try:
+            cell = sheet.find(game_name)
+        except gspread.exceptions.CellNotFound:
+            return {"success": False, "message": "Jogo não encontrado."}
+        
+        # Pega todos os valores da linha encontrada para preservar os dados que não foram alterados
+        row_values = sheet.row_values(cell.row)
+        
+        # IMPORTANTE: Este dicionário mapeia o nome do campo para o ÍNDICE (base 0) da coluna na sua planilha
+        # Ex: 'Nome' está na primeira coluna (índice 0), 'Plataforma' na segunda (índice 1), etc.
+        # AJUSTE ESTA ORDEM se a sua planilha for diferente.
+        column_map = {
+            'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
+            'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
+            'Estilo': 8, 'Link': 9, 'Adquirido em': 10, 'Início em': 11,
+            'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14
         }
+        
+        # Cria a nova linha com os dados atualizados
+        new_row = list(row_values) # Copia os valores antigos
+        for key, value in updated_data.items():
+            if key in column_map:
+                col_index = column_map[key]
+                # Garante que a lista 'new_row' tenha o tamanho necessário
+                while len(new_row) <= col_index:
+                    new_row.append('')
+                new_row[col_index] = value
 
-        updates = []
-        for key, col in update_map.items():
-            if key in updated_data:
-                updates.append({'range': f'{gspread.utils.rowcol_to_a1(cell.row, col)}', 'values': [[updated_data[key]]]})
-
-        if updates:
-            sheet.batch_update(updates)
+        # Atualiza a linha inteira na planilha
+        sheet.update(f'A{cell.row}', [new_row])
         
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
@@ -178,17 +194,18 @@ def update_wish_in_sheet(wish_name, updated_data):
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
         
-        update_map = {
-            'Nome': 1, 'Link': 2, 'Data Lançamento': 3, 'Preço': 4
-        }
-        
-        updates = []
-        for key, col in update_map.items():
-            if key in updated_data:
-                updates.append({'range': f'{gspread.utils.rowcol_to_a1(cell.row, col)}', 'values': [[updated_data[key]]]})
+        row_values = sheet.row_values(cell.row)
+        column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3}
 
-        if updates:
-            sheet.batch_update(updates)
+        new_row = list(row_values)
+        for key, value in updated_data.items():
+            if key in column_map:
+                col_index = column_map[key]
+                while len(new_row) <= col_index:
+                    new_row.append('')
+                new_row[col_index] = value
+
+        sheet.update(f'A{cell.row}', [new_row])
 
         return {"success": True, "message": "Item de desejo atualizado com sucesso."}
     except Exception as e:
