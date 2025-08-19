@@ -18,7 +18,6 @@ GENRE_TRANSLATIONS = {
 @game_bp.route('/search-external', methods=['GET'])
 @jwt_required()
 def search_external_games():
-    """Busca jogos na API da RAWG e retorna dados formatados."""
     query = request.args.get('query', '')
     if not query or len(query) < 3:
         return jsonify({"error": "A busca deve ter pelo menos 3 caracteres."}), 400
@@ -34,32 +33,31 @@ def search_external_games():
 
         results = []
         for game in rawg_data.get('results', []):
-            # 1. Traduzindo os gêneros para português
             genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
             
-            # 2. Verificando se o jogo tem a tag "Soulslike"
-            is_soulslike = any(tag['slug'] == 'Souls-like' for tag in game.get('tags', []))
+            is_soulslike = any(tag['slug'] == 'soulslike' for tag in game.get('tags', []))
             if is_soulslike and "Soulslike" not in genres_pt:
                 genres_pt.append("Soulslike")
 
-            # 3. Formatando a data de DD/MM/AAAA (a API manda AAAA-MM-DD)
             release_date = game.get('released')
-            if release_date:
-                parts = release_date.split('-') # [AAAA, MM, DD]
-                formatted_date = f"{parts[2]}/{parts[1]}/{parts[0]}"
-            else:
-                formatted_date = ''
-
+            
             results.append({
                 'name': game.get('name'),
                 'background_image': game.get('background_image'),
-                'released_for_input': release_date, # Formato AAAA-MM-DD para o input date
-                'styles': ', '.join(genres_pt) # Junta os estilos com vírgula
+                'released_for_input': release_date,
+                'styles': ', '.join(genres_pt)
             })
             
         return jsonify(results)
+
+    except requests.exceptions.RequestException as e:
+        print(f"!!! ERRO DE COMUNICAÇÃO COM A API EXTERNA: {e}")
+        return jsonify({"error": "Falha ao se comunicar com a API da RAWG."}), 503
+
     except Exception as e:
-        return jsonify({"error": "Erro inesperado no servidor."}), 500
+        print(f"!!! ERRO INESPERADO NA ROTA /search-external: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Ocorreu um erro interno no servidor. Verifique os logs."}), 500
 
 @game_bp.route('/data')
 @jwt_required()
