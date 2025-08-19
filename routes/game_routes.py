@@ -1,5 +1,3 @@
-# COLE ESTE CÓDIGO COMPLETO NO SEU ARQUIVO game_routes.py
-
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 from services import game_service
@@ -36,26 +34,26 @@ def search_external_games():
         rawg_data = response.json()
 
         results = []
-    for game in rawg_data.get('results', []):
-        genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
-    
-        game_tags = game.get('tags') or []
-    
-        for tag in game_tags:
-            if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
-                soulslike_tag_name = tag.get('name')
-                if soulslike_tag_name and soulslike_tag_name not in genres_pt:
-                    genres_pt.append(soulslike_tag_name)
-                break
-                
-        release_date = game.get('released')
-    
-        results.append({
-            'name': game.get('name'),
-            'background_image': game.get('background_image'),
-            'released_for_input': release_date,
-            'styles': ', '.join(genres_pt)
-        })
+        for game in rawg_data.get('results', []):
+            genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
+            
+            game_tags = game.get('tags') or []
+            
+            for tag in game_tags:
+                if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
+                    soulslike_tag_name = tag.get('name')
+                    if soulslike_tag_name and soulslike_tag_name not in genres_pt:
+                        genres_pt.append(soulslike_tag_name)
+                    break
+
+            release_date = game.get('released')
+            
+            results.append({
+                'name': game.get('name'),
+                'background_image': game.get('background_image'),
+                'released_for_input': release_date,
+                'styles': ', '.join(genres_pt)
+            })
             
         return jsonify(results)
 
