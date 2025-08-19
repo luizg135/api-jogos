@@ -37,6 +37,7 @@ def search_external_games():
 
         results = []
         for game in rawg_data.get('results', []):
+            print(f"Tags recebidas para {game.get('name')}: {game.get('tags')}")
             genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
     
             game_tags = game.get('tags') or [] # Garante que temos uma lista, mesmo que vazia
