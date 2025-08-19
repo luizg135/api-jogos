@@ -38,13 +38,15 @@ def search_external_games():
         results = []
         for game in rawg_data.get('results', []):
             genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
-            
-            is_soulslike = any(tag['slug'] == 'soulslike' for tag in game.get('tags', []))
+    
+            game_tags = game.get('tags') or [] # Garante que temos uma lista, mesmo que vazia
+            is_soulslike = any(tag.get('slug') == 'soulslike' for tag in game_tags)
+    
             if is_soulslike and "Soulslike" not in genres_pt:
-                genres_pt.append("Soulslike")
+                 genres_pt.append("Soulslike")
 
             release_date = game.get('released')
-            
+    
             results.append({
                 'name': game.get('name'),
                 'background_image': game.get('background_image'),
