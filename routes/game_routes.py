@@ -133,5 +133,10 @@ def delete_item(list_type, item_name):
         else:
             return jsonify({"success": False, "message": "Tipo de lista inválido."}), 400
         return jsonify(result)
-    except Exception as e:
-        return jsonify({"success": False, "message": "Erro ao deletar item.", "detalhes_tecnicos": str(e)}), 500
+ except Exception as e:
+        # --- SUBSTITUA O 'EXCEPT' ANTIGO POR ESTE ---
+        # Adicionamos 'prints' para que o erro detalhado apareça nos logs do Render
+        print(f"!!! ERRO INESPERADO NA ROTA /search-external: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Erro inesperado no servidor. Verifique os logs para detalhes."}), 500
