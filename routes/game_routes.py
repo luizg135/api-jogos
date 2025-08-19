@@ -5,6 +5,62 @@ import traceback
 
 game_bp = Blueprint('games', __name__)
 
+GENRE_TRANSLATIONS = {
+    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
+    "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
+    "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
+    "Arcade": "Arcade", "Platformer": "Plataforma", "Racing": "Corrida",
+    "Massively Multiplayer": "MMO", "Sports": "Esportes", "Fighting": "Luta",
+    "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
+    "Card": "Cartas"
+}
+
+@game_bp.route('/search-external', methods=['GET'])
+@jwt_required()
+def search_external_games():
+    """Busca jogos na API da RAWG e retorna dados formatados."""
+    query = request.args.get('query', '')
+    if not query or len(query) < 3:
+        return jsonify({"error": "A busca deve ter pelo menos 3 caracteres."}), 400
+
+    if not Config.RAWG_API_KEY:
+        return jsonify({"error": "Chave da API externa não configurada no servidor."}), 500
+
+    try:
+        url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={query}&page_size=5"
+        response = requests.get(url)
+        response.raise_for_status()
+        rawg_data = response.json()
+
+        results = []
+        for game in rawg_data.get('results', []):
+            # 1. Traduzindo os gêneros para português
+            genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
+            
+            # 2. Verificando se o jogo tem a tag "Soulslike"
+            is_soulslike = any(tag['slug'] == 'Souls-like' for tag in game.get('tags', []))
+            if is_soulslike and "Soulslike" not in genres_pt:
+                genres_pt.append("Soulslike")
+
+            # 3. Formatando a data de DD/MM/AAAA (a API manda AAAA-MM-DD)
+            release_date = game.get('released')
+            if release_date:
+                parts = release_date.split('-') # [AAAA, MM, DD]
+                formatted_date = f"{parts[2]}/{parts[1]}/{parts[0]}"
+            else:
+                formatted_date = ''
+
+            results.append({
+                'name': game.get('name'),
+                'background_image': game.get('background_image'),
+                'released_for_input': release_date, # Formato AAAA-MM-DD para o input date
+                'styles': ', '.join(genres_pt) # Junta os estilos com vírgula
+            })
+            
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": "Erro inesperado no servidor."}), 500
+
 @game_bp.route('/data')
 @jwt_required()
 def get_all_game_data():
