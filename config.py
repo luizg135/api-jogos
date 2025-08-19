@@ -22,3 +22,5 @@ class Config:
 
     ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
     ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH', generate_password_hash('suasenha_padrao'))
+
+    RAWG_API_KEY = os.environ.get('RAWG_API_KEY')
