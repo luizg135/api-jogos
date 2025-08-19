@@ -1,7 +1,7 @@
 import gspread
 import pandas as pd
 import json
-import math # NOVO: Importado para cálculos de nível
+import math
 from oauth2client.service_account import ServiceAccountCredentials
 from config import Config
 from datetime import datetime
@@ -37,32 +37,29 @@ def _get_data_from_sheet(sheet):
         traceback.print_exc()
         return []
 
-# NOVO: Função de cálculo de EXP e Nível
 def _calculate_gamer_stats(games_data):
     """Calcula EXP, nível e rank com base nos dados dos jogos."""
     total_exp = 0
     for game in games_data:
-        # Pontos por status
         if game.get('Status') == 'Finalizado':
             total_exp += 100
         elif game.get('Status') == 'Platinado':
-            total_exp += 500 # Bônus maior por platinar
+            total_exp += 500
         
-        # Pontos por nota (se existir)
-        nota = float(str(game.get('Nota', '0')).replace(',', '.'))
-        if nota > 0:
-            total_exp += int(nota * 10) # Ex: Nota 8.7 = 87 EXP
+        try:
+            nota = float(str(game.get('Nota', '0')).replace(',', '.'))
+            if nota > 0:
+                total_exp += int(nota * 10)
+        except ValueError:
+            pass # Ignora notas que não são números
             
-        # Pontos por conquistas
         conquistas = int(game.get('Conquistas Obtidas', 0))
         total_exp += conquistas
 
-    # Lógica de Nível (ex: 1000 EXP por nível)
     exp_per_level = 1000
     nivel = math.floor(total_exp / exp_per_level)
     exp_no_nivel_atual = total_exp % exp_per_level
     
-    # Lógica de Rank
     ranks = {0: "Bronze", 10: "Prata", 20: "Ouro", 30: "Platina", 40: "Diamante", 50: "Mestre"}
     rank_gamer = "Bronze"
     for level_req, rank_name in ranks.items():
@@ -70,28 +67,37 @@ def _calculate_gamer_stats(games_data):
             rank_gamer = rank_name
             
     return {
-        'nivel_gamer': nivel,
-        'rank_gamer': rank_gamer,
-        'exp_nivel_atual': exp_no_nivel_atual,
-        'exp_para_proximo_nivel': exp_per_level,
+        'nivel_gamer': nivel, 'rank_gamer': rank_gamer,
+        'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level,
     }
 
 
 def get_all_game_data():
-    """Lê os dados das planilhas 'Jogos' e 'Desejos' e os retorna em formato JSON."""
+    """Lê, ORDENA e retorna todos os dados de jogos e desejos."""
     try:
         game_sheet = _get_sheet('Jogos')
         games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
 
+        # NOVO: Lógica de Ordenação
+        def sort_key(game):
+            try:
+                # Trata notas como números, considerando vírgulas. Notas inválidas ou ausentes valem -1.
+                nota = float(str(game.get('Nota', '-1')).replace(',', '.'))
+            except (ValueError, TypeError):
+                nota = -1
+            # Retorna uma tupla: a nota negativa (para ordem decrescente) e o nome (para ordem crescente).
+            return (-nota, game.get('Nome', '').lower())
+
+        games_data.sort(key=sort_key)
+        # Fim da lógica de Ordenação
+
         wishlist_sheet = _get_sheet('Desejos')
         wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
         
-        # NOVO: Calcula estatísticas de gamer
         gamer_stats = _calculate_gamer_stats(games_data)
         
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
         stats = {
-            # Adiciona as estatísticas calculadas
             **gamer_stats,
             'total_jogos': len(games_data), 
             'total_na_fila': len([g for g in games_data if g.get('Status') == 'Na Fila']),
@@ -113,7 +119,6 @@ def get_all_game_data():
         return { 'estatisticas': {}, 'biblioteca': [], 'desejos': [] }
 
 
-# O restante do arquivo (add_game_to_sheet, update_game_in_sheet, etc.) permanece o mesmo da versão anterior.
 def add_game_to_sheet(game_data):
     try:
         sheet = _get_sheet('Jogos')
