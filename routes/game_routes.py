@@ -43,7 +43,7 @@ def search_external_games():
                 if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
                     soulslike_tag_name = tag.get('name')
                     if soulslike_tag_name and soulslike_tag_name not in genres_pt:
-                        genres_pt.append(soulslike_tag_name)
+                        genres_pt.append("Soulslike")
                     break
 
             release_date = game.get('released')
