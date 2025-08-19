@@ -36,24 +36,26 @@ def search_external_games():
         rawg_data = response.json()
 
         results = []
-        for game in rawg_data.get('results', []):
-            print(f"Tags recebidas para {game.get('name')}: {game.get('tags')}")
-            genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
+    for game in rawg_data.get('results', []):
+        genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
     
-            game_tags = game.get('tags') or [] # Garante que temos uma lista, mesmo que vazia
-            is_soulslike = any(tag.get('slug') == 'soulslike' for tag in game_tags)
+        game_tags = game.get('tags') or []
     
-            if is_soulslike and "Soulslike" not in genres_pt:
-                 genres_pt.append("Soulslike")
-
-            release_date = game.get('released')
+        for tag in game_tags:
+            if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
+                soulslike_tag_name = tag.get('name')
+                if soulslike_tag_name and soulslike_tag_name not in genres_pt:
+                    genres_pt.append(soulslike_tag_name)
+                break
+                
+        release_date = game.get('released')
     
-            results.append({
-                'name': game.get('name'),
-                'background_image': game.get('background_image'),
-                'released_for_input': release_date,
-                'styles': ', '.join(genres_pt)
-            })
+        results.append({
+            'name': game.get('name'),
+            'background_image': game.get('background_image'),
+            'released_for_input': release_date,
+            'styles': ', '.join(genres_pt)
+        })
             
         return jsonify(results)
 
