@@ -143,11 +143,128 @@ def get_all_game_data():
         print(f"Erro ao buscar dados: {e}"); traceback.print_exc()
         return { 'estatisticas': {}, 'biblioteca': [], 'desejos': [], 'perfil': {}, 'conquistas_concluidas': [], 'conquistas_pendentes': [] }
 
-# O restante das funções (update_profile, add_game, etc.) não precisa de alteração
-def update_profile_in_sheet(profile_data): # ... (sem alterações)
-def add_game_to_sheet(game_data): # ... (sem alterações)
-def add_wish_to_sheet(wish_data): # ... (sem alterações)
-def update_game_in_sheet(game_name, updated_data): # ... (sem alterações)
-def delete_game_from_sheet(game_name): # ... (sem alterações)
-def update_wish_in_sheet(wish_name, updated_data): # ... (sem alterações)
-def delete_wish_from_sheet(wish_name): # ... (sem alterações)
+def update_profile_in_sheet(profile_data):
+    try:
+        sheet = _get_sheet('Perfil')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha de perfil falhou."}
+        for key, value in profile_data.items():
+            try:
+                cell = sheet.find(key)
+                sheet.update_cell(cell.row, cell.col + 1, value)
+            except gspread.exceptions.CellNotFound:
+                sheet.append_row([key, value])
+        _invalidate_cache()
+        return {"success": True, "message": "Perfil atualizado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao atualizar perfil: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao atualizar perfil."}
+
+def add_game_to_sheet(game_data):
+    try:
+        sheet = _get_sheet('Jogos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        row_data = [
+            game_data.get('Nome', ''), game_data.get('Plataforma', ''),
+            game_data.get('Status', ''), game_data.get('Nota', ''),
+            game_data.get('Preço', ''), game_data.get('Tempo de Jogo', ''),
+            game_data.get('Conquistas Obtidas', ''), game_data.get('Platinado?', ''),
+            game_data.get('Estilo', ''), game_data.get('Link', ''),
+            '', '', game_data.get('Terminado em', ''), '', ''
+        ]
+        sheet.append_row(row_data)
+        _invalidate_cache()
+        return {"success": True, "message": "Jogo adicionado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao adicionar jogo."}
+
+def add_wish_to_sheet(wish_data):
+    try:
+        sheet = _get_sheet('Desejos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        row_data = [
+            wish_data.get('Nome', ''), wish_data.get('Link', ''),
+            wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
+        ]
+        sheet.append_row(row_data)
+        _invalidate_cache()
+        return {"success": True, "message": "Item de desejo adicionado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao adicionar item de desejo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao adicionar item de desejo."}
+    
+def update_game_in_sheet(game_name, updated_data):
+    try:
+        sheet = _get_sheet('Jogos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        try: cell = sheet.find(game_name)
+        except gspread.exceptions.CellNotFound: return {"success": False, "message": "Jogo não encontrado."}
+        row_values = sheet.row_values(cell.row)
+        column_map = {
+            'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
+            'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
+            'Estilo': 8, 'Link': 9, 'Adquirido em': 10, 'Início em': 11,
+            'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14
+        }
+        new_row = list(row_values)
+        for key, value in updated_data.items():
+            if key in column_map:
+                col_index = column_map[key]
+                while len(new_row) <= col_index: new_row.append('')
+                new_row[col_index] = value
+        sheet.update(f'A{cell.row}', [new_row])
+        _invalidate_cache()
+        return {"success": True, "message": "Jogo atualizado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao atualizar jogo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao atualizar jogo."}
+        
+def delete_game_from_sheet(game_name):
+    try:
+        sheet = _get_sheet('Jogos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        cell = sheet.find(game_name)
+        if not cell: return {"success": False, "message": "Jogo não encontrado."}
+        sheet.delete_rows(cell.row)
+        _invalidate_cache()
+        return {"success": True, "message": "Jogo deletado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao deletar jogo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao deletar jogo."}
+    
+def update_wish_in_sheet(wish_name, updated_data):
+    try:
+        sheet = _get_sheet('Desejos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        cell = sheet.find(wish_name)
+        if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
+        row_values = sheet.row_values(cell.row)
+        column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3}
+        new_row = list(row_values)
+        for key, value in updated_data.items():
+            if key in column_map:
+                col_index = column_map[key]
+                while len(new_row) <= col_index: new_row.append('')
+                new_row[col_index] = value
+        sheet.update(f'A{cell.row}', [new_row])
+        _invalidate_cache()
+        return {"success": True, "message": "Item de desejo atualizado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao atualizar item de desejo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao atualizar item de desejo."}
+
+def delete_wish_from_sheet(wish_name):
+    try:
+        sheet = _get_sheet('Desejos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        cell = sheet.find(wish_name)
+        if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
+        sheet.delete_rows(cell.row)
+        _invalidate_cache()
+        return {"success": True, "message": "Item de desejo deletado com sucesso."}
+    except Exception as e:
+        print(f"Erro ao deletar item de desejo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao deletar item de desejo."}
+
+def _invalidate_cache():
+    pass # No cache implementation yet
