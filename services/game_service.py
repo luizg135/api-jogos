@@ -95,7 +95,9 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
 def get_all_game_data():
     try:
         game_sheet = _get_sheet('Jogos'); games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
-        wishlist_sheet = _get_sheet('Desejos'); wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
+        wishlist_sheet = _get_sheet('Desejos')
+        all_wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
+        wishlist_data_filtered = [item for item in all_wishlist_data if item.get('Status') != 'Comprado']
         profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
@@ -106,7 +108,6 @@ def get_all_game_data():
             return (-nota, game.get('Nome', '').lower())
         games_data.sort(key=sort_key)
 
-        # Contadores de estatísticas detalhadas
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
         
@@ -130,12 +131,12 @@ def get_all_game_data():
             'total_notas_baixas': len([n for n in notas if n <= 3]),
         }
 
-        completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, wishlist_data)
+        completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         final_stats = {**base_stats, **gamer_stats}
 
         return {
-            'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data, 'perfil': profile_data,
+            'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
             'conquistas_concluidas': completed_achievements,
             'conquistas_pendentes': pending_achievements
         }
@@ -268,3 +269,27 @@ def delete_wish_from_sheet(wish_name):
 
 def _invalidate_cache():
     pass # No cache implementation yet
+
+def purchase_wish_item_in_sheet(item_name):
+    try:
+        sheet = _get_sheet('Desejos')
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+
+        try:
+            cell = sheet.find(item_name)
+        except gspread.exceptions.CellNotFound:
+            return {"success": False, "message": "Item de desejo não encontrado."}
+
+        # Encontra a coluna "Status" e atualiza a célula
+        headers = sheet.row_values(1)
+        try:
+            status_col_index = headers.index('Status') + 1
+            sheet.update_cell(cell.row, status_col_index, 'Comprado')
+            _invalidate_cache()
+            return {"success": True, "message": "Item marcado como comprado!"}
+        except ValueError:
+            return {"success": False, "message": "Coluna 'Status' não encontrada na planilha de Desejos."}
+
+    except Exception as e:
+        print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao processar a compra."}
