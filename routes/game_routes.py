@@ -126,6 +126,16 @@ def edit_item():
     except Exception as e:
         return jsonify({"success": False, "message": "Erro ao editar item.", "detalhes_tecnicos": str(e)}), 500
 
+@game_bp.route('/wishlist/purchase/<string:item_name>', methods=['POST'])
+@jwt_required()
+def purchase_wish_item(item_name):
+    """Marca um item da lista de desejos como 'Comprado'."""
+    try:
+        result = game_service.purchase_wish_item_in_sheet(item_name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "message": "Erro ao marcar item como comprado.", "detalhes_tecnicos": str(e)}), 500
+        
 @game_bp.route('/delete/<list_type>/<string:item_name>', methods=['DELETE'])
 @jwt_required()
 def delete_item(list_type, item_name):
