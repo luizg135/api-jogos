@@ -71,7 +71,7 @@ def _check_achievements(games_data, stats, all_achievements, wishlist_data):
             
     return completed, pending
 
-def _calculate_gamer_stats(games_data, unlocked_achievements):
+ef _calculate_gamer_stats(games_data, unlocked_achievements):
     total_exp = 0
     for game in games_data:
         if game.get('Status') == 'Finalizado': total_exp += 100
@@ -317,29 +317,35 @@ def purchase_wish_item_in_sheet(item_name):
 
 def get_public_profile_data():
     try:
-        games_data = _get_data_from_sheet(_get_sheet('Jogos'))
-        profile_data = _get_data_from_sheet(_get_sheet('Perfil'))
-        
-        # Converte a lista de dicionários do perfil para um único dicionário para fácil acesso
-        profile_dict = {item['Chave']: item['Valor'] for item in profile_data if 'Chave' in item and 'Valor' in item}
+        game_sheet = _get_sheet('Jogos'); games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
+        profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
+        profile_data = {item['Chave']: item['Valor'] for item in profile_records}
+        achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         # Calcula as estatísticas públicas (sem custo total)
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
-        public_stats = {
+        notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
+        
+        base_stats = {
             'total_jogos': len(games_data),
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
             'total_horas_jogadas': sum(tempos_de_jogo),
-            'nivel_gamer': len(games_data) // 10, # Exemplo de cálculo simplificado
-            'rank_gamer': "Platina" # Exemplo de rank
+            'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
+            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
         }
-        
+
+        # Conquistas desbloqueadas para o cálculo do nível e rank
+        completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, [])
+        gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
+        public_stats = {**base_stats, **gamer_stats}
+
         # Filtra os últimos 5 jogos platinados com imagens
         recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
         recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
         
         # Combina os dados
         return {
-            'perfil': profile_dict,
+            'perfil': profile_data,
             'estatisticas': public_stats,
             'ultimos_platinados': recent_platinums[:5]
         }
