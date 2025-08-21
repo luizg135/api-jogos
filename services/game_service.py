@@ -182,7 +182,8 @@ def add_game_to_sheet(game_data):
                 print(f"Erro ao buscar detalhes da RAWG para o ID {rawg_id}: {e}")
 
         sheet = _get_sheet('Jogos')
-        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        if not sheet:
+            return {"success": False, "message": "Conexão com a planilha falhou."}
 
         headers = sheet.row_values(1)
         row_data = [game_data.get(header, '') for header in headers]
@@ -193,7 +194,7 @@ def add_game_to_sheet(game_data):
     except Exception as e:
         print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar jogo."}
-
+        
 def add_wish_to_sheet(wish_data):
     try:
         sheet = _get_sheet('Desejos')
