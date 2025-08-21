@@ -73,6 +73,12 @@ def get_all_game_data():
     """Retorna todos os dados de jogos, desejos e perfil."""
     try:
         data = game_service.get_all_game_data()
+        
+        # Recupera e adiciona os dados de background do perfil
+        profile_data = data.get('perfil', {})
+        data['perfil']['headerBackgroundUrl'] = profile_data.get('headerBackgroundUrl', '')
+        data['perfil']['headerBackgroundName'] = profile_data.get('headerBackgroundName', '')
+        
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": "Não foi possível obter os dados.", "detalhes_tecnicos": str(e)}), 500
