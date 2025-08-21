@@ -164,18 +164,22 @@ def update_profile_in_sheet(profile_data):
 
 def add_game_to_sheet(game_data):
     try:
-        rawg_id = game_data.pop('RAWG_ID', None)
+        # Pega o ID da RAWG dos dados recebidos
+        rawg_id = game_data.get('RAWG_ID')
 
         if rawg_id and Config.RAWG_API_KEY:
             try:
+                # Busca os detalhes completos na API da RAWG
                 url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
                     description = details.get('description_raw', '')
+                    # Adiciona os novos dados ao dicionário que será salvo
                     game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
                     game_data['Metacritic'] = details.get('metacritic', '')
 
+                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
@@ -185,6 +189,7 @@ def add_game_to_sheet(game_data):
         if not sheet:
             return {"success": False, "message": "Conexão com a planilha falhou."}
 
+        # Lógica dinâmica para salvar todos os dados
         headers = sheet.row_values(1)
         row_data = [game_data.get(header, '') for header in headers]
 
