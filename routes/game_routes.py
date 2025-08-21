@@ -17,21 +17,15 @@ GENRE_TRANSLATIONS = {
     "Card": "Cartas"
 }
 
-@game_bp.route('/data')
+@game_bp.route('/search-external', methods=['GET'])
 @jwt_required()
-def get_all_game_data():
-    """Retorna todos os dados de jogos, desejos e perfil."""
-    try:
-        data = game_service.get_all_game_data()
-        
-        # Recupera e adiciona os dados de background do perfil
-        profile_data = data.get('perfil', {})
-        data['perfil']['headerBackgroundUrl'] = profile_data.get('headerBackgroundUrl', '')
-        data['perfil']['headerBackgroundName'] = profile_data.get('headerBackgroundName', '')
-        
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": "Não foi possível obter os dados.", "detalhes_tecnicos": str(e)}), 500
+def search_external_games():
+    query = request.args.get('query', '')
+    if not query or len(query) < 3:
+        return jsonify({"error": "A busca deve ter pelo menos 3 caracteres."}), 400
+
+    if not Config.RAWG_API_KEY:
+        return jsonify({"error": "Chave da API externa não configurada no servidor."}), 500
 
     try:
         url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={query}&page_size=5"
@@ -75,12 +69,11 @@ def get_all_game_data():
 
 @game_bp.route('/data')
 @jwt_required()
-def get_all_game_data():
-    """Retorna todos os dados de jogos, desejos e perfil."""
+def get_dashboard_data():
+    """Retorna todos os dados de jogos, desejos e perfil para o dashboard."""
     try:
         data = game_service.get_all_game_data()
         
-        # Recupera e adiciona os dados de background do perfil
         profile_data = data.get('perfil', {})
         data['perfil']['headerBackgroundUrl'] = profile_data.get('headerBackgroundUrl', '')
         data['perfil']['headerBackgroundName'] = profile_data.get('headerBackgroundName', '')
@@ -88,6 +81,15 @@ def get_all_game_data():
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": "Não foi possível obter os dados.", "detalhes_tecnicos": str(e)}), 500
+
+@game_bp.route('/public-profile')
+def get_public_profile():
+    """Retorna dados públicos do perfil para visualização compartilhável."""
+    try:
+        data = game_service.get_public_profile_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": "Não foi possível obter os dados públicos."}), 500
 
 @game_bp.route('/profile/edit', methods=['PUT'])
 @jwt_required()
@@ -163,12 +165,3 @@ def delete_item(list_type, item_name):
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "message": "Erro ao deletar item.", "detalhes_tecnicos": str(e)}), 500
-
-@game_bp.route('/public-profile')
-def get_public_profile():
-    """Retorna dados públicos do perfil para visualização compartilhável."""
-    try:
-        data = game_service.get_public_profile_data()
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": "Não foi possível obter os dados públicos."}), 500
