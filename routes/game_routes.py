@@ -151,3 +151,12 @@ def delete_item(list_type, item_name):
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "message": "Erro ao deletar item.", "detalhes_tecnicos": str(e)}), 500
+
+@game_bp.route('/public-profile')
+def get_public_profile():
+    """Retorna dados públicos do perfil para visualização compartilhável."""
+    try:
+        data = game_service.get_public_profile_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": "Não foi possível obter os dados públicos."}), 500
