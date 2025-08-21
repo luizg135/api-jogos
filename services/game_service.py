@@ -6,6 +6,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 from config import Config
 from datetime import datetime
 import traceback
+import requests
+from config import Config
 
 def _get_sheet(sheet_name):
     try:
@@ -162,16 +164,29 @@ def update_profile_in_sheet(profile_data):
 
 def add_game_to_sheet(game_data):
     try:
+        rawg_id = game_data.pop('RAWG_ID', None)
+
+        if rawg_id and Config.RAWG_API_KEY:
+            try:
+                url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
+                response = requests.get(url)
+                if response.ok:
+                    details = response.json()
+                    description = details.get('description_raw', '')
+                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
+                    game_data['Metacritic'] = details.get('metacritic', '')
+
+                    screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
+                    game_data['Screenshots'] = ', '.join(screenshots_list)
+            except requests.exceptions.RequestException as e:
+                print(f"Erro ao buscar detalhes da RAWG para o ID {rawg_id}: {e}")
+
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        row_data = [
-            game_data.get('Nome', ''), game_data.get('Plataforma', ''),
-            game_data.get('Status', ''), game_data.get('Nota', ''),
-            game_data.get('Preço', ''), game_data.get('Tempo de Jogo', ''),
-            game_data.get('Conquistas Obtidas', ''), game_data.get('Platinado?', ''),
-            game_data.get('Estilo', ''), game_data.get('Link', ''),
-            '', '', game_data.get('Terminado em', ''), '', ''
-        ]
+
+        headers = sheet.row_values(1)
+        row_data = [game_data.get(header, '') for header in headers]
+
         sheet.append_row(row_data)
         _invalidate_cache()
         return {"success": True, "message": "Jogo adicionado com sucesso."}
