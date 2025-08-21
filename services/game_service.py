@@ -71,7 +71,7 @@ def _check_achievements(games_data, stats, all_achievements, wishlist_data):
             
     return completed, pending
 
-ef _calculate_gamer_stats(games_data, unlocked_achievements):
+def _calculate_gamer_stats(games_data, unlocked_achievements):
     total_exp = 0
     for game in games_data:
         if game.get('Status') == 'Finalizado': total_exp += 100
