@@ -6,8 +6,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from config import Config
 from datetime import datetime
 import traceback
-import requests
-from config import Config
 
 def _get_sheet(sheet_name):
     try:
@@ -164,35 +162,16 @@ def update_profile_in_sheet(profile_data):
 
 def add_game_to_sheet(game_data):
     try:
-        rawg_id = game_data.pop('RAWG_ID', None) # Pega o ID e remove do dict principal
-
-        if rawg_id and Config.RAWG_API_KEY:
-            # --- Lógica de enriquecimento de dados ---
-            try:
-                url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
-                response = requests.get(url)
-                if response.ok:
-                    details = response.json()
-                    # Pega a descrição, remove tags HTML e limita a 500 caracteres
-                    description = details.get('description_raw', '')
-                    game_data['Descricao'] = (description[:500] + '...') if len(description) > 500 else description
-
-                    # Pega a nota do Metacritic
-                    game_data['Metacritic'] = details.get('metacritic', '')
-
-                    # Pega até 3 links de screenshots
-                    screenshots = [sc['image'] for sc in details.get('screenshots', [])[:3]]
-                    game_data['Screenshots'] = ', '.join(screenshots)
-            except requests.exceptions.RequestException as e:
-                print(f"Erro ao buscar detalhes da RAWG para o ID {rawg_id}: {e}")
-                # Continua sem os detalhes se a API falhar
-
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-
-        headers = sheet.row_values(1)
-        row_data = [game_data.get(header, '') for header in headers]
-
+        row_data = [
+            game_data.get('Nome', ''), game_data.get('Plataforma', ''),
+            game_data.get('Status', ''), game_data.get('Nota', ''),
+            game_data.get('Preço', ''), game_data.get('Tempo de Jogo', ''),
+            game_data.get('Conquistas Obtidas', ''), game_data.get('Platinado?', ''),
+            game_data.get('Estilo', ''), game_data.get('Link', ''),
+            '', '', game_data.get('Terminado em', ''), '', ''
+        ]
         sheet.append_row(row_data)
         _invalidate_cache()
         return {"success": True, "message": "Jogo adicionado com sucesso."}
