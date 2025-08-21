@@ -49,6 +49,7 @@ def search_external_games():
             release_date = game.get('released')
             
             results.append({
+                'id': game.get('id'), 
                 'name': game.get('name'),
                 'background_image': game.get('background_image'),
                 'released_for_input': release_date,
