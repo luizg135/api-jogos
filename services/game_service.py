@@ -155,6 +155,7 @@ def update_profile_in_sheet(profile_data):
                 cell = sheet.find(key)
                 sheet.update_cell(cell.row, cell.col + 1, value)
             except gspread.exceptions.CellNotFound:
+                # Cria a chave se ela não existir
                 sheet.append_row([key, value])
         _invalidate_cache()
         return {"success": True, "message": "Perfil atualizado com sucesso."}
