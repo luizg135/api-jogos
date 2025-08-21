@@ -314,3 +314,35 @@ def purchase_wish_item_in_sheet(item_name):
     except Exception as e:
         print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
+
+def get_public_profile_data():
+    try:
+        games_data = _get_data_from_sheet(_get_sheet('Jogos'))
+        profile_data = _get_data_from_sheet(_get_sheet('Perfil'))
+        
+        # Converte a lista de dicionários do perfil para um único dicionário para fácil acesso
+        profile_dict = {item['Chave']: item['Valor'] for item in profile_data if 'Chave' in item and 'Valor' in item}
+
+        # Calcula as estatísticas públicas (sem custo total)
+        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
+        public_stats = {
+            'total_jogos': len(games_data),
+            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
+            'total_horas_jogadas': sum(tempos_de_jogo),
+            'nivel_gamer': len(games_data) // 10, # Exemplo de cálculo simplificado
+            'rank_gamer': "Platina" # Exemplo de rank
+        }
+        
+        # Filtra os últimos 5 jogos platinados com imagens
+        recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
+        recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
+        
+        # Combina os dados
+        return {
+            'perfil': profile_dict,
+            'estatisticas': public_stats,
+            'ultimos_platinados': recent_platinums[:5]
+        }
+    except Exception as e:
+        print(f"Erro ao buscar dados do perfil público: {e}"); traceback.print_exc()
+        return {'perfil': {}, 'estatisticas': {}, 'ultimos_platinados': []}
