@@ -456,11 +456,17 @@ def _check_wishlist_releases(wishlist_data, existing_notifications):
     today = datetime.now().date()
     
     # IDs de notificações de lançamento já existentes para evitar duplicação
-    existing_release_notifications = {
-        (n.get('Mensagem'), n.get('Data').split(' ')[0]) 
-        for n in existing_notifications 
-        if n.get('Tipo') == 'Lançamento'
-    }
+    existing_release_notifications = set()
+    for n in existing_notifications:
+        data_string = n.get('Data')
+        if data_string and n.get('Tipo') == 'Lançamento':
+            try:
+                # Usa um try-except para lidar com formatos de data inválidos
+                data_parte = data_string.split(' ')[0]
+                existing_release_notifications.add((n.get('Mensagem'), data_parte))
+            except Exception as e:
+                print(f"AVISO: Pulando notificação com data mal formatada: '{data_string}'. Erro: {e}")
+
 
     for item in wishlist_data:
         release_date_str = item.get('Data Lançamento')
