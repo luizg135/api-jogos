@@ -1,5 +1,5 @@
 # routes/notification_routes.py
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 from services import notification_service
 import traceback
@@ -13,7 +13,12 @@ def check_notifications():
     Executa a verificação de todas as notificações e retorna as não lidas.
     """
     try:
-        notification_service.check_for_notifications()
+        data = request.json
+        notification_service.check_for_notifications(
+            data.get('biblioteca', []),
+            data.get('desejos', []),
+            data.get('conquistas_concluidas', [])
+        )
         unread_notifications = [notif for notif in notification_service.get_notifications() if notif.get('Lida') == 'Não']
         return jsonify(unread_notifications)
     except Exception as e:
