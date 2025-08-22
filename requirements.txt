@@ -1,9 +1,9 @@
 Flask
-Flask-Cors
-Flask-JWT-Extended
-gunicorn
+flask-cors
 gspread
 oauth2client
-werkzeug
 pandas
+gunicorn
+Flask-JWT-Extended
 requests
+apscheduler
