@@ -7,4 +7,4 @@ oauth2client
 werkzeug
 pandas
 requests
-argostranslate
+deep-translator
