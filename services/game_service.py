@@ -272,7 +272,12 @@ def update_game_in_sheet(game_name, updated_data):
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                new_row[col_index] = value
+                # Conversão para float para Nota e Preço antes de salvar
+                if key in ['Nota', 'Preço'] and value is not None:
+                    new_row[col_index] = float(value)
+                else:
+                    new_row[col_index] = value
+
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache()
         return {"success": True, "message": "Jogo atualizado com sucesso."}
@@ -306,7 +311,12 @@ def update_wish_in_sheet(wish_name, updated_data):
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                new_row[col_index] = value
+                # Conversão para float para Preço antes de salvar
+                if key == 'Preço' and value is not None:
+                    new_row[col_index] = float(value)
+                else:
+                    new_row[col_index] = value
+
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo atualizado com sucesso."}
