@@ -78,7 +78,7 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
         elif game.get('Status') == 'Platinado': total_exp += 500
         try:
             nota = float(str(game.get('Nota', '0')).replace(',', '.'))
-            if nota > 0: total_exp += int(nota * 10)
+            if nota > 0: total_exp += int(nota)
         except ValueError: pass
         total_exp += int(game.get('Conquistas Obtidas', 0))
 
@@ -120,7 +120,7 @@ def get_all_game_data():
             'total_avaliados': len([g for g in games_data if g.get('Nota') and float(str(g.get('Nota')).replace(',', '.')) > 0]),
             'total_horas_jogadas': sum(tempos_de_jogo),
             'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
-            'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
+            'media_notas': sum(notas) / len(notas) if notas else 0,
             'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
             'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
@@ -129,8 +129,8 @@ def get_all_game_data():
             'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
             'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
-            'total_notas_10': len([n for n in notas if n == 10]),
-            'total_notas_baixas': len([n for n in notas if n <= 3]),
+            'total_notas_10': len([n for n in notas if n == 100]),
+            'total_notas_baixas': len([n for n in notas if n <= 30]),
         }
 
         completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
@@ -161,7 +161,7 @@ def get_public_profile_data():
             'total_jogos': len(games_data),
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
             'total_horas_jogadas': sum(tempos_de_jogo),
-            'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
+            'media_notas': sum(notas) / len(notas) if notas else 0,
             'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
         }
 
@@ -195,7 +195,6 @@ def update_profile_in_sheet(profile_data):
             except gspread.exceptions.CellNotFound:
                 # Cria a chave se ela não existir
                 sheet.append_row([key, value])
-        _invalidate_cache()
         return {"success": True, "message": "Perfil atualizado com sucesso."}
     except Exception as e:
         print(f"Erro ao atualizar perfil: {e}"); traceback.print_exc()
@@ -233,7 +232,6 @@ def add_game_to_sheet(game_data):
         row_data = [game_data.get(header, '') for header in headers]
 
         sheet.append_row(row_data)
-        _invalidate_cache()
         return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
         print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
@@ -248,7 +246,6 @@ def add_wish_to_sheet(wish_data):
             wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
         ]
         sheet.append_row(row_data)
-        _invalidate_cache()
         return {"success": True, "message": "Item de desejo adicionado com sucesso."}
     except Exception as e:
         print(f"Erro ao adicionar item de desejo: {e}"); traceback.print_exc()
@@ -279,7 +276,6 @@ def update_game_in_sheet(game_name, updated_data):
                     new_row[col_index] = value
 
         sheet.update(f'A{cell.row}', [new_row])
-        _invalidate_cache()
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
         print(f"Erro ao atualizar jogo: {e}"); traceback.print_exc()
@@ -292,7 +288,6 @@ def delete_game_from_sheet(game_name):
         cell = sheet.find(game_name)
         if not cell: return {"success": False, "message": "Jogo não encontrado."}
         sheet.delete_rows(cell.row)
-        _invalidate_cache()
         return {"success": True, "message": "Jogo deletado com sucesso."}
     except Exception as e:
         print(f"Erro ao deletar jogo: {e}"); traceback.print_exc()
@@ -318,7 +313,6 @@ def update_wish_in_sheet(wish_name, updated_data):
                     new_row[col_index] = value
 
         sheet.update(f'A{cell.row}', [new_row])
-        _invalidate_cache()
         return {"success": True, "message": "Item de desejo atualizado com sucesso."}
     except Exception as e:
         print(f"Erro ao atualizar item de desejo: {e}"); traceback.print_exc()
@@ -331,14 +325,13 @@ def delete_wish_from_sheet(wish_name):
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
         sheet.delete_rows(cell.row)
-        _invalidate_cache()
         return {"success": True, "message": "Item de desejo deletado com sucesso."}
     except Exception as e:
         print(f"Erro ao deletar item de desejo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao deletar item de desejo."}
 
 def _invalidate_cache():
-    pass # No cache implementation yet
+    pass
 
 def purchase_wish_item_in_sheet(item_name):
     try:
@@ -355,7 +348,6 @@ def purchase_wish_item_in_sheet(item_name):
         try:
             status_col_index = headers.index('Status') + 1
             sheet.update_cell(cell.row, status_col_index, 'Comprado')
-            _invalidate_cache()
             return {"success": True, "message": "Item marcado como comprado!"}
         except ValueError:
             return {"success": False, "message": "Coluna 'Status' não encontrada na planilha de Desejos."}
