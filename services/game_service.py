@@ -7,18 +7,25 @@ from config import Config
 from datetime import datetime
 import traceback
 import requests
-from config import Config
+
 
 def _get_sheet(sheet_name):
     try:
+        if not Config.GOOGLE_SHEETS_CREDENTIALS_JSON:
+            raise ValueError("GOOGLE_SHEETS_CREDENTIALS environment variable is not set.")
+        
         creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
+        
+        if not Config.GAME_SHEET_URL:
+            raise ValueError("GAME_SHEET_URL environment variable is not set.")
+            
         spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
         return spreadsheet.worksheet(sheet_name)
     except Exception as e:
-        print(f"Erro ao autenticar: {e}"); traceback.print_exc()
+        print(f"Erro crítico de autenticação ou configuração: {e}"); traceback.print_exc()
         return None
 
 def _get_data_from_sheet(sheet):
@@ -111,7 +118,7 @@ def get_all_game_data():
         games_data.sort(key=sort_key)
 
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
-        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
+        tempos_de_jogo = [int(str(g.get('Tempo de Jogo')).replace('h', '')) if g.get('Tempo de Jogo') else 0 for g in games_data]
         
         base_stats = {
             'total_jogos': len(games_data),
@@ -201,6 +208,7 @@ def update_profile_in_sheet(profile_data):
         return {"success": False, "message": "Erro ao atualizar perfil."}
 
 def add_game_to_sheet(game_data):
+    print(f"Dados recebidos do frontend: {game_data}") # Log de depuração
     try:
         # Pega o ID da RAWG dos dados recebidos
         rawg_id = game_data.get('RAWG_ID')
@@ -212,9 +220,10 @@ def add_game_to_sheet(game_data):
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
-                    description = details.get('description_raw', '')
+                    description_en = details.get('description_raw', '')
+                    
                     # Adiciona os novos dados ao dicionário que será salvo
-                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
+                    game_data['Descricao'] = (description_en[:495] + '...') if len(description_en) > 500 else description_en
                     game_data['Metacritic'] = details.get('metacritic', '')
 
                     # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
@@ -225,17 +234,23 @@ def add_game_to_sheet(game_data):
 
         sheet = _get_sheet('Jogos')
         if not sheet:
-            return {"success": False, "message": "Conexão com a planilha falhou."}
+            return {"success": False, "message": "Conexão com a planilha falhou. Verifique as credenciais."}
 
         # Lógica dinâmica para salvar todos os dados
-        headers = sheet.row_values(1)
-        row_data = [game_data.get(header, '') for header in headers]
+        try:
+            if not game_data.get('Nome'):
+                raise ValueError("Nome do jogo não pode ser vazio.")
+            headers = sheet.row_values(1)
+            row_data = [game_data.get(header, '') for header in headers]
+            sheet.append_row(row_data)
+            return {"success": True, "message": "Jogo adicionado com sucesso."}
+        except Exception as e:
+            print(f"Erro ao adicionar linha na planilha: {e}"); traceback.print_exc()
+            return {"success": False, "message": f"Erro ao adicionar jogo na planilha: {str(e)}"}
 
-        sheet.append_row(row_data)
-        return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
-        return {"success": False, "message": "Erro ao adicionar jogo."}
+        print(f"Erro inesperado no servidor: {e}"); traceback.print_exc()
+        return {"success": False, "message": f"Ocorreu um erro inesperado no servidor: {str(e)}"}
         
 def add_wish_to_sheet(wish_data):
     try:
