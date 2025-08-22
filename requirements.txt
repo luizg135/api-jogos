@@ -8,3 +8,4 @@ werkzeug
 pandas
 requests
 deep-translator
+transformers
