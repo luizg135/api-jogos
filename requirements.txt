@@ -7,5 +7,3 @@ oauth2client
 werkzeug
 pandas
 requests
-deep-translator
-transformers
