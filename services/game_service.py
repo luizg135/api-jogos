@@ -85,23 +85,13 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
         if game.get('Status') == 'Finalizado': total_exp += 100
         elif game.get('Status') == 'Platinado': total_exp += 500
         try:
-            # Lida com valores vazios ou não numéricos
-            nota_str = str(game.get('Nota', '0')).replace(',', '.')
-            if nota_str.lower() != 'none' and nota_str.strip():
-                nota = float(nota_str)
-                if nota > 0: total_exp += int(nota * 10)
-        except (ValueError, TypeError):
-            pass
-        try:
-            total_exp += int(game.get('Conquistas Obtidas', 0))
-        except (ValueError, TypeError):
-            pass
+            nota = float(str(game.get('Nota', '0')).replace(',', '.'))
+            if nota > 0: total_exp += int(nota * 10)
+        except ValueError: pass
+        total_exp += int(game.get('Conquistas Obtidas', 0))
 
     for ach in unlocked_achievements:
-        try:
-            total_exp += int(ach.get('EXP', 0))
-        except (ValueError, TypeError):
-            pass
+        total_exp += int(ach.get('EXP', 0))
 
     exp_per_level = 1000
     nivel = math.floor(total_exp / exp_per_level)
@@ -158,40 +148,29 @@ def get_all_game_data():
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         def sort_key(game):
-            try: 
-                nota_str = str(game.get('Nota', '-1')).replace(',', '.')
-                nota = float(nota_str) if nota_str.lower() != 'none' else -1
-            except (ValueError, TypeError): 
-                nota = -1
+            try: nota = float(str(game.get('Nota', '-1')).replace(',', '.'))
+            except (ValueError, TypeError): nota = -1
             return (-nota, game.get('Nome', '').lower())
         games_data.sort(key=sort_key)
 
-        notas = []
-        for game in games_data:
-            nota_str = str(game.get('Nota', '0')).replace(',', '.')
-            if nota_str.lower() != 'none' and nota_str.strip():
-                try:
-                    notas.append(float(nota_str))
-                except (ValueError, TypeError):
-                    pass
-                    
-        tempos_de_jogo = [int(str(game.get('Tempo de Jogo', 0)).replace('h', '')) for game in games_data]
+        notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
+        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
         
         base_stats = {
             'total_jogos': len(games_data),
-            'total_finalizados': len([game for game in games_data if game.get('Status') in ['Finalizado', 'Platinado']]),
-            'total_platinados': len([game for game in games_data if game.get('Platinado?') == 'Sim']),
-            'total_avaliados': len([game for game in games_data if game.get('Nota') and str(game.get('Nota', '0')).replace(',', '.').strip().lower() != 'none']),
+            'total_finalizados': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado']]),
+            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
+            'total_avaliados': len([g for g in games_data if g.get('Nota') and float(str(g.get('Nota')).replace(',', '.')) > 0]),
             'total_horas_jogadas': sum(tempos_de_jogo),
-            'custo_total_biblioteca': sum([float(str(game.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for game in games_data]),
+            'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
             'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
-            'total_conquistas': sum([int(game.get('Conquistas Obtidas', 0)) for game in games_data if str(game.get('Conquistas Obtidas', '0')).strip().lower() != 'none']),
+            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
-            'total_soulslike_platinados': len([game for game in games_data if game.get('Platinado?') == 'Sim' and 'Soulslike' in game.get('Estilo', '')]),
-            'total_indie': len([game for game in games_data if 'Indie' in game.get('Estilo', '')]),
+            'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
+            'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
             'max_horas_um_jogo': max(tempos_de_jogo) if tempos_de_jogo else 0,
-            'total_finalizados_acao': len([game for game in games_data if game.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in game.get('Estilo', '')]),
-            'total_finalizados_estrategia': len([game for game in games_data if game.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in game.get('Estilo', '')]),
+            'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
+            'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
             'total_notas_10': len([n for n in notas if n == 10]),
             'total_notas_baixas': len([n for n in notas if n <= 3]),
@@ -220,15 +199,15 @@ def get_public_profile_data():
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         # Calcula as estatísticas públicas
-        tempos_de_jogo = [int(str(game.get('Tempo de Jogo', 0)).replace('h', '')) for game in games_data]
-        notas = [float(str(game.get('Nota', 0)).replace(',', '.')) for game in games_data if game.get('Nota')]
+        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
+        notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
 
         base_stats = {
             'total_jogos': len(games_data),
-            'total_platinados': len([game for game in games_data if game.get('Platinado?') == 'Sim']),
+            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
             'total_horas_jogadas': sum(tempos_de_jogo),
             'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
-            'total_conquistas': sum([int(game.get('Conquistas Obtidas', 0)) for game in games_data]),
+            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
         }
 
         # Conquistas desbloqueadas para o cálculo do nível e rank
@@ -237,7 +216,7 @@ def get_public_profile_data():
         public_stats = {**base_stats, **gamer_stats}
         
         # Filtra os últimos 5 jogos platinados com imagens
-        recent_platinums = [game for game in games_data if game.get('Platinado?') == 'Sim' and game.get('Link')]
+        recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
         recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
         
         return {
@@ -283,10 +262,8 @@ def add_game_to_sheet(game_data):
                     # Adiciona os novos dados ao dicionário que será salvo
                     game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
                     game_data['Metacritic'] = details.get('metacritic', '')
-                    # Adiciona a RAWG_ID
-                    game_data['RAWG_ID'] = rawg_id
-                    
-                    # Usa 'short_screenshots' para pegar as imagens
+
+                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
@@ -312,11 +289,6 @@ def add_wish_to_sheet(wish_data):
     try:
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        
-        # Corrige a formatação do preço antes de salvar
-        if isinstance(wish_data.get('Preço'), str):
-            wish_data['Preço'] = float(wish_data['Preço'].replace(',', '.')) if wish_data['Preço'] else 0
-            
         row_data = [
             wish_data.get('Nome', ''), wish_data.get('Link', ''),
             wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
@@ -336,27 +308,18 @@ def update_game_in_sheet(game_name, updated_data):
         try: cell = sheet.find(game_name)
         except gspread.exceptions.CellNotFound: return {"success": False, "message": "Jogo não encontrado."}
         row_values = sheet.row_values(cell.row)
-        
-        # Mapeamento de colunas para facilitar a atualização
         column_map = {
             'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
             'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
             'Estilo': 8, 'Link': 9, 'Adquirido em': 10, 'Início em': 11,
             'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14
         }
-        
         new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                
-                # Formata os valores numéricos antes de salvar
-                if key in ['Nota', 'Preço']:
-                    new_row[col_index] = str(value).replace('.', ',')
-                else:
-                    new_row[col_index] = value
-                    
+                new_row[col_index] = value
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache()
         create_notification("Atualização", f"O jogo '{game_name}' foi atualizado na sua biblioteca.", game_name)
@@ -385,20 +348,14 @@ def update_wish_in_sheet(wish_name, updated_data):
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
-        row_values = sheet.row_values(cell.row)
+        row_values = sheet.row_values(1)
         column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3}
-        
         new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-
-                if key == 'Preço':
-                    new_row[col_index] = str(value).replace('.', ',')
-                else:
-                    new_row[col_index] = value
-        
+                new_row[col_index] = value
         sheet.update(f'A{cell.row}', [new_row])
         create_notification("Atualização", f"O item de desejo '{wish_name}' foi atualizado.", wish_name)
         _invalidate_cache()
