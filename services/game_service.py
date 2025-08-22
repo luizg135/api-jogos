@@ -37,6 +37,10 @@ def _check_achievements(games_data, stats, all_achievements, wishlist_data):
     completed = []
     pending = []
     
+    # Obtém todas as notificações existentes para evitar duplicatas
+    notifications = get_notifications()
+    notified_achievements = {n.get('Jogo') for n in notifications.get('read', []) + notifications.get('unread', []) if n.get('Tipo') == 'Conquista'}
+    
     progress_map = {
         'FINALIZADOS': stats.get('total_finalizados', 0),
         'PLATINADOS': stats.get('total_platinados', 0),
@@ -66,8 +70,8 @@ def _check_achievements(games_data, stats, all_achievements, wishlist_data):
         ach['meta'] = target
 
         if current_progress >= target:
-            if ach.get('ID') not in [c.get('ID') for c in completed]:
-                # Nova conquista desbloqueada, cria notificação
+            # Verifica se já existe uma notificação para essa conquista antes de criá-la
+            if ach.get('Nome') not in notified_achievements:
                 create_notification("Conquista", f"Parabéns! Você desbloqueou a conquista '{ach.get('Nome')}'!", ach.get('Nome'))
             completed.append(ach)
         else:
@@ -365,7 +369,7 @@ def purchase_wish_item_in_sheet(item_name):
         print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
 
-# --- NOVAS FUNÇÕES DE NOTIFICAÇÃO ---
+# --- FUNÇÕES DE NOTIFICAÇÃO ---
 
 def create_notification(notification_type, message, game_name=None):
     try:
