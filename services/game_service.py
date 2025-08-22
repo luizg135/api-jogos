@@ -11,14 +11,21 @@ from googletrans import Translator
 
 def _get_sheet(sheet_name):
     try:
+        if not Config.GOOGLE_SHEETS_CREDENTIALS_JSON:
+            raise ValueError("GOOGLE_SHEETS_CREDENTIALS environment variable is not set.")
+        
         creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
+        
+        if not Config.GAME_SHEET_URL:
+            raise ValueError("GAME_SHEET_URL environment variable is not set.")
+            
         spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
         return spreadsheet.worksheet(sheet_name)
     except Exception as e:
-        print(f"Erro ao autenticar: {e}"); traceback.print_exc()
+        print(f"Erro crítico de autenticação ou configuração: {e}"); traceback.print_exc()
         return None
 
 def _get_data_from_sheet(sheet):
@@ -201,6 +208,7 @@ def update_profile_in_sheet(profile_data):
         return {"success": False, "message": "Erro ao atualizar perfil."}
 
 def add_game_to_sheet(game_data):
+    print(f"Dados recebidos do frontend: {game_data}") # Log de depuração
     try:
         # Pega o ID da RAWG dos dados recebidos
         rawg_id = game_data.get('RAWG_ID')
@@ -233,17 +241,23 @@ def add_game_to_sheet(game_data):
 
         sheet = _get_sheet('Jogos')
         if not sheet:
-            return {"success": False, "message": "Conexão com a planilha falhou."}
+            return {"success": False, "message": "Conexão com a planilha falhou. Verifique as credenciais."}
 
         # Lógica dinâmica para salvar todos os dados
-        headers = sheet.row_values(1)
-        row_data = [game_data.get(header, '') for header in headers]
+        try:
+            if not game_data.get('Nome'):
+                raise ValueError("Nome do jogo não pode ser vazio.")
+            headers = sheet.row_values(1)
+            row_data = [game_data.get(header, '') for header in headers]
+            sheet.append_row(row_data)
+            return {"success": True, "message": "Jogo adicionado com sucesso."}
+        except Exception as e:
+            print(f"Erro ao adicionar linha na planilha: {e}"); traceback.print_exc()
+            return {"success": False, "message": f"Erro ao adicionar jogo na planilha: {str(e)}"}
 
-        sheet.append_row(row_data)
-        return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
-        return {"success": False, "message": "Erro ao adicionar jogo."}
+        print(f"Erro inesperado no servidor: {e}"); traceback.print_exc()
+        return {"success": False, "message": f"Ocorreu um erro inesperado no servidor: {str(e)}"}
         
 def add_wish_to_sheet(wish_data):
     try:
