@@ -8,23 +8,6 @@ from datetime import datetime
 import traceback
 import requests
 from config import Config
-from deep_translator import GoogleTranslator
-from transformers import pipeline
-
-translator_offline = pipeline("translation", model="Helsinki-NLP/opus-mt-en-pt")
-
-def traduzir_texto(texto, max_chars=4000):
-    partes = []
-    for i in range(0, len(texto), max_chars):
-        trecho = texto[i:i+max_chars]
-        try:
-            # tenta primeiro pelo Google
-            traducao = GoogleTranslator(source="auto", target="pt").translate(trecho)
-        except Exception as e:
-            print(f"⚠️ Erro no Google, usando fallback offline: {e}")
-            traducao = translator_offline(trecho)[0]["translation_text"]
-        partes.append(traducao)
-    return " ".join(partes)
 
 def _get_sheet(sheet_name):
     try:
@@ -48,15 +31,6 @@ def _get_data_from_sheet(sheet):
     except Exception as e:
         print(f"Erro genérico ao ler dados: {e}"); traceback.print_exc()
         return []
-
-def traduzir_texto_grande(texto, max_chars=4000):
-    partes = []
-    # Quebra o texto em pedaços menores
-    for i in range(0, len(texto), max_chars):
-        trecho = texto[i:i+max_chars]
-        traducao = GoogleTranslator(source='auto', target='pt').translate(trecho)
-        partes.append(traducao)
-    return " ".join(partes)
 
 def _check_achievements(games_data, stats, all_achievements, wishlist_data):
     completed = []
@@ -228,27 +202,22 @@ def update_profile_in_sheet(profile_data):
 
 def add_game_to_sheet(game_data):
     try:
+        # Pega o ID da RAWG dos dados recebidos
         rawg_id = game_data.get('RAWG_ID')
-        
+
         if rawg_id and Config.RAWG_API_KEY:
             try:
+                # Busca os detalhes completos na API da RAWG
                 url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
                     description = details.get('description_raw', '')
-                    
-                    # Tenta traduzir a descrição
-                if description:
-                    try:
-                        translated_description = traduzir_texto(description)
-                        game_data['Descricao'] = translated_description
-                    except Exception as e:
-                        print(f"Erro ao traduzir descrição: {e}")
-                        game_data['Descricao'] = description
-
+                    # Adiciona os novos dados ao dicionário que será salvo
+                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
                     game_data['Metacritic'] = details.get('metacritic', '')
 
+                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
@@ -258,14 +227,14 @@ def add_game_to_sheet(game_data):
         if not sheet:
             return {"success": False, "message": "Conexão com a planilha falhou."}
 
+        # Lógica dinâmica para salvar todos os dados
         headers = sheet.row_values(1)
         row_data = [game_data.get(header, '') for header in headers]
 
         sheet.append_row(row_data)
         return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar jogo: {e}")
-        traceback.print_exc()
+        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar jogo."}
         
 def add_wish_to_sheet(wish_data):
