@@ -1,3 +1,4 @@
+# services/notification_service.py
 import gspread
 import json
 from datetime import datetime
@@ -91,7 +92,6 @@ def mark_notification_as_read(notification_id):
         return {"success": False, "message": "Erro ao marcar notificação como lida."}
 
 def _hash_data(data_list):
-    """Gera um hash para uma lista de dicionários para comparar alterações."""
     data_str = json.dumps(sorted(data_list, key=lambda x: x.get('Nome', '')), sort_keys=True)
     return hashlib.sha256(data_str.encode('utf-8')).hexdigest()
 
@@ -102,31 +102,26 @@ def _update_profile_data(profile_sheet, key, value):
     except gspread.exceptions.CellNotFound:
         profile_sheet.append_row([key, value])
 
-def check_for_notifications():
+def check_for_notifications(current_library, current_wishlist, current_achievements):
     try:
-        all_game_data = game_service.get_all_game_data()
-        current_library = all_game_data.get('biblioteca', [])
-        current_wishlist = all_game_data.get('desejos', [])
-        current_achievements = all_game_data.get('conquistas_concluidas', [])
-
         profile_sheet = _get_sheet('Perfil')
         if not profile_sheet: return {"success": False, "message": "Conexão com a planilha de Perfil falhou."}
-
+        
         profile_records = _get_data_from_sheet(profile_sheet)
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
 
         last_game_state = json.loads(profile_data.get('last_full_game_data', '[]'))
         last_wish_state = json.loads(profile_data.get('last_full_wish_data', '[]'))
         last_completed_ach_ids = json.loads(profile_data.get('last_completed_achievements', '[]'))
-
+        
         current_game_state_hash = _hash_data(current_library)
         current_wish_state_hash = _hash_data(current_wishlist)
-
+        
         # Notificações de Conquistas
         new_achievements = [ach for ach in current_achievements if ach['ID'] not in last_completed_ach_ids]
         for ach in new_achievements:
             add_notification(f"Conquista adquirida: \"{ach['Nome']}\"!", 'conquista')
-
+        
         # Notificações de Lançamento de Jogos
         today = datetime.now().date()
         for wish in current_wishlist:
@@ -137,7 +132,7 @@ def check_for_notifications():
                     add_notification(f"O jogo da sua lista de desejos \"{wish['Nome']}\" será lançado em {days_until_release} dias!", 'lancamento')
             except (ValueError, KeyError):
                 pass
-
+        
         # Notificações da Biblioteca de Jogos
         old_game_names = {g['Nome'] for g in last_game_state}
         current_game_names = {g['Nome'] for g in current_library}
@@ -146,16 +141,6 @@ def check_for_notifications():
         for name in added_games:
             add_notification(f"O jogo \"{name}\" foi adicionado à sua biblioteca.", 'adicao_biblioteca')
         for name in removed_games:
-            add_notification(f"O jogo \"{name}\" foi removido da sua biblioteca.", 'remocao_biblioteca')
-
-        # Notificações da Lista de Desejos
-        old_wish_names = {w['Nome'] for w in last_wish_state}
-        current_wish_names = {w['Nome'] for w in current_wishlist}
-        added_wishes = current_wish_names - old_wish_names
-        removed_wishes = old_wish_names - current_wish_names
-        for name in added_wishes:
-            add_notification(f"O jogo \"{name}\" foi adicionado à sua lista de desejos.", 'adicao_desejos')
-        for name in removed_wishes:
             # Se o item removido da wishlist está agora na biblioteca, é uma compra
             if name in current_game_names:
                 add_notification(f"Você comprou \"{name}\" da sua lista de desejos! 🎉", 'compra_desejo')
@@ -169,7 +154,7 @@ def check_for_notifications():
                     old_game = next((g for g in last_game_state if g['Nome'] == game['Nome']), None)
                     if old_game and _hash_data([game]) != _hash_data([old_game]):
                         add_notification(f"O jogo \"{game['Nome']}\" na sua biblioteca foi alterado.", 'alteracao_biblioteca')
-
+        
         if profile_data.get('last_wish_state_hash') != current_wish_state_hash:
             for wish in current_wishlist:
                 if wish['Nome'] in old_wish_names:
