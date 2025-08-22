@@ -158,40 +158,40 @@ def get_all_game_data():
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         def sort_key(game):
-            try:
+            try: 
                 nota_str = str(game.get('Nota', '-1')).replace(',', '.')
                 nota = float(nota_str) if nota_str.lower() != 'none' else -1
-            except (ValueError, TypeError):
+            except (ValueError, TypeError): 
                 nota = -1
             return (-nota, game.get('Nome', '').lower())
         games_data.sort(key=sort_key)
 
         notas = []
-        for g in games_data:
-            nota_str = str(g.get('Nota', '0')).replace(',', '.')
+        for game in games_data:
+            nota_str = str(game.get('Nota', '0')).replace(',', '.')
             if nota_str.lower() != 'none' and nota_str.strip():
                 try:
                     notas.append(float(nota_str))
                 except (ValueError, TypeError):
                     pass
                     
-        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
+        tempos_de_jogo = [int(str(game.get('Tempo de Jogo', 0)).replace('h', '')) for game in games_data]
         
         base_stats = {
             'total_jogos': len(games_data),
-            'total_finalizados': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado']]),
-            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
-            'total_avaliados': len([g for g in games_data if g.get('Nota') and str(g.get('Nota', '0')).replace(',', '.').strip().lower() != 'none']),
+            'total_finalizados': len([game for game in games_data if game.get('Status') in ['Finalizado', 'Platinado']]),
+            'total_platinados': len([game for game in games_data if game.get('Platinado?') == 'Sim']),
+            'total_avaliados': len([game for game in games_data if game.get('Nota') and str(game.get('Nota', '0')).replace(',', '.').strip().lower() != 'none']),
             'total_horas_jogadas': sum(tempos_de_jogo),
-            'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
+            'custo_total_biblioteca': sum([float(str(game.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for game in games_data]),
             'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
-            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data if str(g.get('Conquistas Obtidas', '0')).strip().lower() != 'none']),
+            'total_conquistas': sum([int(game.get('Conquistas Obtidas', 0)) for game in games_data if str(game.get('Conquistas Obtidas', '0')).strip().lower() != 'none']),
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
-            'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
-            'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
+            'total_soulslike_platinados': len([game for game in games_data if game.get('Platinado?') == 'Sim' and 'Soulslike' in game.get('Estilo', '')]),
+            'total_indie': len([game for game in games_data if 'Indie' in game.get('Estilo', '')]),
             'max_horas_um_jogo': max(tempos_de_jogo) if tempos_de_jogo else 0,
-            'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
-            'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
+            'total_finalizados_acao': len([game for game in games_data if game.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in game.get('Estilo', '')]),
+            'total_finalizados_estrategia': len([game for game in games_data if game.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in game.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
             'total_notas_10': len([n for n in notas if n == 10]),
             'total_notas_baixas': len([n for n in notas if n <= 3]),
@@ -220,15 +220,15 @@ def get_public_profile_data():
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         # Calcula as estatísticas públicas
-        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
-        notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
+        tempos_de_jogo = [int(str(game.get('Tempo de Jogo', 0)).replace('h', '')) for game in games_data]
+        notas = [float(str(game.get('Nota', 0)).replace(',', '.')) for game in games_data if game.get('Nota')]
 
         base_stats = {
             'total_jogos': len(games_data),
-            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
+            'total_platinados': len([game for game in games_data if game.get('Platinado?') == 'Sim']),
             'total_horas_jogadas': sum(tempos_de_jogo),
             'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
-            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
+            'total_conquistas': sum([int(game.get('Conquistas Obtidas', 0)) for game in games_data]),
         }
 
         # Conquistas desbloqueadas para o cálculo do nível e rank
@@ -237,7 +237,7 @@ def get_public_profile_data():
         public_stats = {**base_stats, **gamer_stats}
         
         # Filtra os últimos 5 jogos platinados com imagens
-        recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
+        recent_platinums = [game for game in games_data if game.get('Platinado?') == 'Sim' and game.get('Link')]
         recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
         
         return {
@@ -283,8 +283,10 @@ def add_game_to_sheet(game_data):
                     # Adiciona os novos dados ao dicionário que será salvo
                     game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
                     game_data['Metacritic'] = details.get('metacritic', '')
-
-                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
+                    # Adiciona a RAWG_ID
+                    game_data['RAWG_ID'] = rawg_id
+                    
+                    # Usa 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
