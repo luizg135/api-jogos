@@ -8,6 +8,7 @@ from datetime import datetime
 import traceback
 import requests
 from config import Config
+from googletrans import Translator
 
 def _get_sheet(sheet_name):
     try:
@@ -202,22 +203,29 @@ def update_profile_in_sheet(profile_data):
 
 def add_game_to_sheet(game_data):
     try:
-        # Pega o ID da RAWG dos dados recebidos
         rawg_id = game_data.get('RAWG_ID')
+        translator = Translator() # Instancia o tradutor aqui
 
         if rawg_id and Config.RAWG_API_KEY:
             try:
-                # Busca os detalhes completos na API da RAWG
                 url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
                     description = details.get('description_raw', '')
-                    # Adiciona os novos dados ao dicionário que será salvo
-                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
+                    
+                    # TENTA TRADUZIR A DESCRIÇÃO PARA PORTUGUÊS
+                    if description:
+                        try:
+                            # Traduz do idioma detectado automaticamente para português (Brasil)
+                            translated_description = translator.translate(description, dest='pt').text
+                            game_data['Descricao'] = translated_description
+                        except Exception as e:
+                            print(f"Erro ao traduzir descrição: {e}")
+                            game_data['Descricao'] = description # Mantém o original em caso de erro
+
                     game_data['Metacritic'] = details.get('metacritic', '')
 
-                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
@@ -227,7 +235,6 @@ def add_game_to_sheet(game_data):
         if not sheet:
             return {"success": False, "message": "Conexão com a planilha falhou."}
 
-        # Lógica dinâmica para salvar todos os dados
         headers = sheet.row_values(1)
         row_data = [game_data.get(header, '') for header in headers]
 
