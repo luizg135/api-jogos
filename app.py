@@ -15,7 +15,7 @@ app.config["JWT_SECRET_KEY"] = Config.JWT_SECRET_KEY
 jwt = JWTManager(app)
 
 # Configurações para o CORS (para o frontend funcionar)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Registra os blueprints
 app.register_blueprint(auth_bp, url_prefix='/api')
