@@ -7,4 +7,3 @@ oauth2client
 werkzeug
 pandas
 requests
-googletrans
