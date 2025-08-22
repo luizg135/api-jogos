@@ -8,6 +8,7 @@ from datetime import datetime
 import traceback
 import requests
 from config import Config
+import uuid
 
 def _get_sheet(sheet_name):
     try:
@@ -65,6 +66,9 @@ def _check_achievements(games_data, stats, all_achievements, wishlist_data):
         ach['meta'] = target
 
         if current_progress >= target:
+            if ach.get('ID') not in [c.get('ID') for c in completed]:
+                # Nova conquista desbloqueada, cria notificação
+                create_notification("Conquista", f"Parabéns! Você desbloqueou a conquista '{ach.get('Nome')}'!", ach.get('Nome'))
             completed.append(ach)
         else:
             pending.append(ach)
@@ -233,6 +237,7 @@ def add_game_to_sheet(game_data):
         row_data = [game_data.get(header, '') for header in headers]
 
         sheet.append_row(row_data)
+        create_notification("Adição", f"O jogo '{game_data.get('Nome')}' foi adicionado à sua biblioteca.", game_data.get('Nome'))
         _invalidate_cache()
         return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
@@ -248,6 +253,7 @@ def add_wish_to_sheet(wish_data):
             wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
         ]
         sheet.append_row(row_data)
+        create_notification("Desejo", f"O jogo '{wish_data.get('Nome')}' foi adicionado à sua lista de desejos.", wish_data.get('Nome'))
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo adicionado com sucesso."}
     except Exception as e:
@@ -275,6 +281,7 @@ def update_game_in_sheet(game_name, updated_data):
                 new_row[col_index] = value
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache()
+        create_notification("Atualização", f"O jogo '{game_name}' foi atualizado na sua biblioteca.", game_name)
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
         print(f"Erro ao atualizar jogo: {e}"); traceback.print_exc()
@@ -287,6 +294,7 @@ def delete_game_from_sheet(game_name):
         cell = sheet.find(game_name)
         if not cell: return {"success": False, "message": "Jogo não encontrado."}
         sheet.delete_rows(cell.row)
+        create_notification("Exclusão", f"O jogo '{game_name}' foi excluído da sua biblioteca.", game_name)
         _invalidate_cache()
         return {"success": True, "message": "Jogo deletado com sucesso."}
     except Exception as e:
@@ -308,6 +316,7 @@ def update_wish_in_sheet(wish_name, updated_data):
                 while len(new_row) <= col_index: new_row.append('')
                 new_row[col_index] = value
         sheet.update(f'A{cell.row}', [new_row])
+        create_notification("Atualização", f"O item de desejo '{wish_name}' foi atualizado.", wish_name)
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo atualizado com sucesso."}
     except Exception as e:
@@ -321,6 +330,7 @@ def delete_wish_from_sheet(wish_name):
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
         sheet.delete_rows(cell.row)
+        create_notification("Exclusão", f"O item de desejo '{wish_name}' foi excluído.", wish_name)
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo deletado com sucesso."}
     except Exception as e:
@@ -345,6 +355,7 @@ def purchase_wish_item_in_sheet(item_name):
         try:
             status_col_index = headers.index('Status') + 1
             sheet.update_cell(cell.row, status_col_index, 'Comprado')
+            create_notification("Compra", f"O jogo '{item_name}' foi marcado como comprado e removido da sua lista de desejos.", item_name)
             _invalidate_cache()
             return {"success": True, "message": "Item marcado como comprado!"}
         except ValueError:
@@ -353,3 +364,72 @@ def purchase_wish_item_in_sheet(item_name):
     except Exception as e:
         print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
+
+# --- NOVAS FUNÇÕES DE NOTIFICAÇÃO ---
+
+def create_notification(notification_type, message, game_name=None):
+    try:
+        sheet = _get_sheet('Notificações')
+        if not sheet:
+            print("Erro: Planilha de Notificações não encontrada.")
+            return
+
+        row = [
+            str(uuid.uuid4()),
+            notification_type,
+            message,
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "Não Lida"
+        ]
+        
+        # Adiciona o nome do jogo para referência no front
+        headers = sheet.row_values(1)
+        if 'Jogo' not in headers:
+            sheet.append_row(['ID', 'Tipo', 'Mensagem', 'Data', 'Status', 'Jogo'])
+            headers = sheet.row_values(1)
+            
+        row_data = [row[i] if i < len(row) else game_name for i, h in enumerate(headers)]
+        sheet.append_row(row_data)
+
+    except Exception as e:
+        print(f"Erro ao criar notificação: {e}"); traceback.print_exc()
+        
+def get_notifications():
+    try:
+        sheet = _get_sheet('Notificações')
+        if not sheet:
+            return {"unread": [], "read": []}
+
+        notifications = _get_data_from_sheet(sheet)
+        unread = sorted([n for n in notifications if n.get('Status') == 'Não Lida'], key=lambda x: x.get('Data'), reverse=True)
+        read = sorted([n for n in notifications if n.get('Status') == 'Lida'], key=lambda x: x.get('Data'), reverse=True)
+        
+        return {"unread": unread, "read": read}
+        
+    except Exception as e:
+        print(f"Erro ao buscar notificações: {e}"); traceback.print_exc()
+        return {"unread": [], "read": []}
+
+def mark_notifications_as_read(notification_ids):
+    try:
+        sheet = _get_sheet('Notificações')
+        if not sheet:
+            return {"success": False, "message": "Conexão com a planilha de Notificações falhou."}
+
+        notifications = _get_data_from_sheet(sheet)
+        
+        updates = []
+        for n in notifications:
+            if n.get('ID') in notification_ids and n.get('Status') == 'Não Lida':
+                row_index = notifications.index(n) + 2
+                updates.append({'range': f'E{row_index}', 'values': [['Lida']]})
+        
+        if updates:
+            sheet.batch_update(updates)
+            return {"success": True, "message": "Notificações marcadas como lidas."}
+        else:
+            return {"success": True, "message": "Nenhuma notificação para marcar como lida."}
+
+    except Exception as e:
+        print(f"Erro ao marcar notificações como lidas: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao marcar notificações como lidas."}
