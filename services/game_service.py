@@ -8,7 +8,7 @@ from datetime import datetime
 import traceback
 import requests
 from config import Config
-import translators as ts
+from deep_translator import GoogleTranslator
 
 def _get_sheet(sheet_name):
     try:
@@ -213,15 +213,14 @@ def add_game_to_sheet(game_data):
                     details = response.json()
                     description = details.get('description_raw', '')
                     
-                    # Tenta traduzir a descrição
+                    # Traduz a descrição
                     if description:
                         try:
-                            # Traduz do idioma detectado automaticamente para português (Brasil)
-                            translated_description = ts.google(description, to_language='pt', if_use_cn_host=False)
+                            translated_description = GoogleTranslator(source='auto', target='pt').translate(description)
                             game_data['Descricao'] = translated_description
                         except Exception as e:
                             print(f"Erro ao traduzir descrição: {e}")
-                            game_data['Descricao'] = description # Mantém o original em caso de erro
+                            game_data['Descricao'] = description # Mantém original se falhar
 
                     game_data['Metacritic'] = details.get('metacritic', '')
 
