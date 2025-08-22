@@ -4,7 +4,6 @@ from services import game_service
 import traceback
 import requests
 from config import Config
-from services import game_service, notification_service
 
 game_bp = Blueprint('games', __name__)
 
@@ -114,22 +113,8 @@ def add_new_item():
         
         if list_type == 'games':
             result = game_service.add_game_to_sheet(item_data)
-            # Gatilho para notificação de adição de jogo
-            if result.get('success'):
-                notification_service.add_notification(
-                    notification_type="adicao_jogo",
-                    message=f"Você adicionou o jogo '{item_data.get('name')}' à sua lista de jogos.",
-                    jogo_name=item_data.get('name')
-                )
         elif list_type == 'wishlist':
             result = game_service.add_wish_to_sheet(item_data)
-            # Gatilho para notificação de adição de desejo
-            if result.get('success'):
-                notification_service.add_notification(
-                    notification_type="adicao_desejo",
-                    message=f"Você adicionou o jogo '{item_data.get('name')}' à sua lista de desejos.",
-                    jogo_name=item_data.get('name')
-                )
         else:
             return jsonify({"success": False, "message": "Tipo de lista inválido."}), 400
         return jsonify(result)
@@ -148,27 +133,8 @@ def edit_item():
         
         if list_type == 'games':
             result = game_service.update_game_in_sheet(item_name, updated_data)
-            if result.get('success'):
-                # Gatilho para notificação de edição
-                notification_service.add_notification(
-                    notification_type="edicao",
-                    message=f"Você editou o jogo '{item_name}' em sua lista de jogos.",
-                    jogo_name=item_name
-                )
-                
-                # Gatilho para notificação de conquista
-                # Esta função deve estar em game_service.py e conter a lógica de checagem.
-                game_service.check_for_achievement_notifications(item_name, updated_data)
-                
         elif list_type == 'wishlist':
             result = game_service.update_wish_in_sheet(item_name, updated_data)
-            if result.get('success'):
-                # Gatilho para notificação de edição da lista de desejos
-                notification_service.add_notification(
-                    notification_type="edicao_desejos",
-                    message=f"Você editou o jogo '{item_name}' na sua lista de desejos.",
-                    jogo_name=item_name
-                )
         else:
             return jsonify({"success": False, "message": "Tipo de lista inválido."}), 400
         return jsonify(result)
@@ -192,20 +158,8 @@ def delete_item(list_type, item_name):
     try:
         if list_type == 'games':
             result = game_service.delete_game_from_sheet(item_name)
-            if result.get('success'):
-                notification_service.add_notification(
-                    notification_type="remocao_jogo",
-                    message=f"O jogo '{item_name}' foi removido da sua lista de jogos.",
-                    jogo_name=item_name
-                )
         elif list_type == 'wishlist':
             result = game_service.delete_wish_from_sheet(item_name)
-            if result.get('success'):
-                notification_service.add_notification(
-                    notification_type="remocao_desejo",
-                    message=f"O jogo '{item_name}' foi removido da sua lista de desejos.",
-                    jogo_name=item_name
-                )
         else:
             return jsonify({"success": False, "message": "Tipo de lista inválido."}), 400
         return jsonify(result)
