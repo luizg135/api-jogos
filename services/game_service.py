@@ -313,18 +313,27 @@ def update_game_in_sheet(game_name, updated_data):
         try: cell = sheet.find(game_name)
         except gspread.exceptions.CellNotFound: return {"success": False, "message": "Jogo não encontrado."}
         row_values = sheet.row_values(cell.row)
+        
+        # Mapeamento de colunas para facilitar a atualização
         column_map = {
             'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
             'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
             'Estilo': 8, 'Link': 9, 'Adquirido em': 10, 'Início em': 11,
             'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14
         }
+        
         new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                new_row[col_index] = value
+                
+                # Formata os valores numéricos antes de salvar
+                if key in ['Nota', 'Preço']:
+                    new_row[col_index] = str(value).replace('.', ',')
+                else:
+                    new_row[col_index] = value
+                    
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache()
         create_notification("Atualização", f"O jogo '{game_name}' foi atualizado na sua biblioteca.", game_name)
@@ -353,14 +362,20 @@ def update_wish_in_sheet(wish_name, updated_data):
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
-        row_values = sheet.row_values(1)
+        row_values = sheet.row_values(cell.row)
         column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3}
+        
         new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                new_row[col_index] = value
+
+                if key == 'Preço':
+                    new_row[col_index] = str(value).replace('.', ',')
+                else:
+                    new_row[col_index] = value
+        
         sheet.update(f'A{cell.row}', [new_row])
         create_notification("Atualização", f"O item de desejo '{wish_name}' foi atualizado.", wish_name)
         _invalidate_cache()
