@@ -9,6 +9,22 @@ import traceback
 import requests
 from config import Config
 from deep_translator import GoogleTranslator
+from transformers import pipeline
+
+translator_offline = pipeline("translation", model="Helsinki-NLP/opus-mt-en-pt")
+
+def traduzir_texto(texto, max_chars=4000):
+    partes = []
+    for i in range(0, len(texto), max_chars):
+        trecho = texto[i:i+max_chars]
+        try:
+            # tenta primeiro pelo Google
+            traducao = GoogleTranslator(source="auto", target="pt").translate(trecho)
+        except Exception as e:
+            print(f"⚠️ Erro no Google, usando fallback offline: {e}")
+            traducao = translator_offline(trecho)[0]["translation_text"]
+        partes.append(traducao)
+    return " ".join(partes)
 
 def _get_sheet(sheet_name):
     try:
@@ -223,13 +239,13 @@ def add_game_to_sheet(game_data):
                     description = details.get('description_raw', '')
                     
                     # Tenta traduzir a descrição
-                    if description:
-                        try:
-                            translated_description = traduzir_texto_grande(description)
-                            game_data['Descricao'] = translated_description
-                        except Exception as e:
-                            print(f"Erro ao traduzir descrição: {e}")
-                            game_data['Descricao'] = description # fallback: original
+                if description:
+                    try:
+                        translated_description = traduzir_texto(description)
+                        game_data['Descricao'] = translated_description
+                    except Exception as e:
+                        print(f"Erro ao traduzir descrição: {e}")
+                        game_data['Descricao'] = description
 
                     game_data['Metacritic'] = details.get('metacritic', '')
 
