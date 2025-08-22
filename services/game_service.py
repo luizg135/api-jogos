@@ -289,6 +289,11 @@ def add_wish_to_sheet(wish_data):
     try:
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
+        
+        # Corrige a formatação do preço antes de salvar
+        if isinstance(wish_data.get('Preço'), str):
+            wish_data['Preço'] = float(wish_data['Preço'].replace(',', '.')) if wish_data['Preço'] else 0
+            
         row_data = [
             wish_data.get('Nome', ''), wish_data.get('Link', ''),
             wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
