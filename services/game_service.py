@@ -85,7 +85,7 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
         elif game.get('Status') == 'Platinado': total_exp += 500
         try:
             nota = float(str(game.get('Nota', '0')).replace(',', '.'))
-            if nota > 0: total_exp += int(nota)
+            if nota > 0: total_exp += int(nota * 10)
         except ValueError: pass
         total_exp += int(game.get('Conquistas Obtidas', 0))
 
@@ -126,7 +126,7 @@ def get_all_game_data():
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
             'total_avaliados': len([g for g in games_data if g.get('Nota') and float(str(g.get('Nota')).replace(',', '.')) > 0]),
             'total_horas_jogadas': sum(tempos_de_jogo),
-            'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
+            'custo_total_biblioteca': sum([float(str(g.get('Preço')).replace('R$', '').replace(',', '.')) if g.get('Preço') else 0 for g in games_data]),
             'media_notas': sum(notas) / len(notas) if notas else 0,
             'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
@@ -136,8 +136,8 @@ def get_all_game_data():
             'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
             'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
-            'total_notas_10': len([n for n in notas if n == 100]),
-            'total_notas_baixas': len([n for n in notas if n <= 30]),
+            'total_notas_10': len([n for n in notas if n == 10]),
+            'total_notas_baixas': len([n for n in notas if n <= 3]),
         }
 
         completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
@@ -161,7 +161,7 @@ def get_public_profile_data():
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         # Calcula as estatísticas públicas
-        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
+        tempos_de_jogo = [int(str(g.get('Tempo de Jogo')).replace('h', '')) if g.get('Tempo de Jogo') else 0 for g in games_data]
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
 
         base_stats = {
@@ -208,25 +208,18 @@ def update_profile_in_sheet(profile_data):
         return {"success": False, "message": "Erro ao atualizar perfil."}
 
 def add_game_to_sheet(game_data):
-    print(f"Dados recebidos do frontend: {game_data}") # Log de depuração
     try:
-        # Pega o ID da RAWG dos dados recebidos
         rawg_id = game_data.get('RAWG_ID')
 
         if rawg_id and Config.RAWG_API_KEY:
             try:
-                # Busca os detalhes completos na API da RAWG
                 url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
-                    description_en = details.get('description_raw', '')
-                    
-                    # Adiciona os novos dados ao dicionário que será salvo
-                    game_data['Descricao'] = (description_en[:495] + '...') if len(description_en) > 500 else description_en
+                    description = details.get('description_raw', '')
+                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
                     game_data['Metacritic'] = details.get('metacritic', '')
-
-                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
@@ -234,23 +227,16 @@ def add_game_to_sheet(game_data):
 
         sheet = _get_sheet('Jogos')
         if not sheet:
-            return {"success": False, "message": "Conexão com a planilha falhou. Verifique as credenciais."}
+            return {"success": False, "message": "Conexão com a planilha falhou."}
 
-        # Lógica dinâmica para salvar todos os dados
-        try:
-            if not game_data.get('Nome'):
-                raise ValueError("Nome do jogo não pode ser vazio.")
-            headers = sheet.row_values(1)
-            row_data = [game_data.get(header, '') for header in headers]
-            sheet.append_row(row_data)
-            return {"success": True, "message": "Jogo adicionado com sucesso."}
-        except Exception as e:
-            print(f"Erro ao adicionar linha na planilha: {e}"); traceback.print_exc()
-            return {"success": False, "message": f"Erro ao adicionar jogo na planilha: {str(e)}"}
-
+        headers = sheet.row_values(1)
+        row_data = [game_data.get(header, '') for header in headers]
+        
+        sheet.append_row(row_data)
+        return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro inesperado no servidor: {e}"); traceback.print_exc()
-        return {"success": False, "message": f"Ocorreu um erro inesperado no servidor: {str(e)}"}
+        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao adicionar jogo."}
         
 def add_wish_to_sheet(wish_data):
     try:
@@ -284,12 +270,7 @@ def update_game_in_sheet(game_name, updated_data):
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                # Conversão para float para Nota e Preço antes de salvar
-                if key in ['Nota', 'Preço'] and value is not None:
-                    new_row[col_index] = float(value)
-                else:
-                    new_row[col_index] = value
-
+                new_row[col_index] = value
         sheet.update(f'A{cell.row}', [new_row])
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
@@ -321,12 +302,7 @@ def update_wish_in_sheet(wish_name, updated_data):
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                # Conversão para float para Preço antes de salvar
-                if key == 'Preço' and value is not None:
-                    new_row[col_index] = float(value)
-                else:
-                    new_row[col_index] = value
-
+                new_row[col_index] = value
         sheet.update(f'A{cell.row}', [new_row])
         return {"success": True, "message": "Item de desejo atualizado com sucesso."}
     except Exception as e:
