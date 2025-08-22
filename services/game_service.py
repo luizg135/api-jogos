@@ -10,6 +10,10 @@ import requests
 import uuid # Para gerar IDs únicos para as notificações
 
 def _get_sheet(sheet_name):
+    """
+    Tenta obter uma planilha específica pelo nome.
+    Adicionado log de erros detalhado.
+    """
     try:
         creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -17,19 +21,45 @@ def _get_sheet(sheet_name):
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
         return spreadsheet.worksheet(sheet_name)
+    except gspread.exceptions.SpreadsheetNotFound:
+        print(f"ERRO: Planilha com a URL '{Config.GAME_SHEET_URL}' não encontrada.")
+        traceback.print_exc()
+        return None
+    except gspread.exceptions.WorksheetNotFound:
+        print(f"ERRO: Aba '{sheet_name}' não encontrada na planilha.")
+        print(f"Por favor, certifique-se de que a aba '{sheet_name}' existe e está com o nome correto.")
+        traceback.print_exc()
+        return None
+    except json.JSONDecodeError:
+        print("ERRO: GOOGLE_SHEETS_CREDENTIALS_JSON não é um JSON válido.")
+        print("Verifique a formatação da sua variável de ambiente GOOGLE_SHEETS_CREDENTIALS.")
+        traceback.print_exc()
+        return None
     except Exception as e:
-        print(f"Erro ao autenticar: {e}"); traceback.print_exc()
+        print(f"ERRO CRÍTICO ao autenticar ou acessar a planilha: {e}")
+        traceback.print_exc()
         return None
 
 def _get_data_from_sheet(sheet):
+    """
+    Tenta obter todos os registros de uma planilha.
+    Adicionado log de erros detalhado.
+    """
+    if sheet is None:
+        print("AVISO: Tentativa de obter dados de uma planilha nula.")
+        return []
     try:
         return sheet.get_all_records()
     except gspread.exceptions.APIError as e:
-        if "unable to parse range" in str(e): return []
-        print(f"Erro ao ler dados: {e}"); traceback.print_exc()
+        if "unable to parse range" in str(e):
+            print(f"AVISO: Erro de API ao ler dados da aba '{sheet.title}'. Pode ser uma aba vazia ou com formato inesperado. Erro: {e}")
+            return []
+        print(f"ERRO de API ao ler dados da aba '{sheet.title}': {e}")
+        traceback.print_exc()
         return []
     except Exception as e:
-        print(f"Erro genérico ao ler dados: {e}"); traceback.print_exc()
+        print(f"ERRO genérico ao ler dados da aba '{sheet.title}': {e}")
+        traceback.print_exc()
         return []
 
 def _check_achievements(games_data, stats, all_achievements, wishlist_data):
@@ -95,15 +125,28 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
     return {'nivel_gamer': nivel, 'rank_gamer': rank_gamer, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
 
 def get_all_game_data():
+    """
+    Retorna todos os dados de jogos, desejos, perfil e conquistas,
+    e agora também gera notificações de lançamento da wishlist.
+    """
     try:
-        game_sheet = _get_sheet('Jogos'); games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
+        game_sheet = _get_sheet('Jogos')
+        games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
+
         wishlist_sheet = _get_sheet('Desejos')
         all_wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
         wishlist_data_filtered = [item for item in all_wishlist_data if item.get('Status') != 'Comprado']
-        profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
+
+        profile_sheet = _get_sheet('Perfil')
+        profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
-        achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
-        notifications_sheet = _get_sheet('Notificações'); all_notifications = _get_data_from_sheet(notifications_sheet) if notifications_sheet else []
+
+        achievements_sheet = _get_sheet('Conquistas')
+        all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
+        
+        # Obter notificações existentes para evitar duplicação
+        notifications_sheet = _get_sheet('Notificações')
+        all_notifications = _get_data_from_sheet(notifications_sheet) if notifications_sheet else []
 
         def sort_key(game):
             try: nota = float(str(game.get('Nota', '-1')).replace(',', '.'))
@@ -147,7 +190,8 @@ def get_all_game_data():
             'conquistas_pendentes': pending_achievements
         }
     except Exception as e:
-        print(f"Erro ao buscar dados: {e}"); traceback.print_exc()
+        print(f"ERRO ao buscar dados completos do jogo: {e}")
+        traceback.print_exc()
         return { 'estatisticas': {}, 'biblioteca': [], 'desejos': [], 'perfil': {}, 'conquistas_concluidas': [], 'conquistas_pendentes': [] }
 
 def get_public_profile_data():
@@ -184,8 +228,9 @@ def get_public_profile_data():
             'ultimos_platinados': recent_platinums[:5]
         }
     except Exception as e:
-        print(f"Erro ao buscar dados do perfil público: {e}"); traceback.print_exc()
+        print(f"ERRO ao buscar dados do perfil público: {e}"); traceback.print_exc()
         return {'perfil': {}, 'estatisticas': {}, 'ultimos_platinados': []}
+
 
 def update_profile_in_sheet(profile_data):
     try:
@@ -201,7 +246,7 @@ def update_profile_in_sheet(profile_data):
         _invalidate_cache()
         return {"success": True, "message": "Perfil atualizado com sucesso."}
     except Exception as e:
-        print(f"Erro ao atualizar perfil: {e}"); traceback.print_exc()
+        print(f"ERRO ao atualizar perfil: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao atualizar perfil."}
 
 def add_game_to_sheet(game_data):
@@ -225,7 +270,7 @@ def add_game_to_sheet(game_data):
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
-                print(f"Erro ao buscar detalhes da RAWG para o ID {rawg_id}: {e}")
+                print(f"ERRO ao buscar detalhes da RAWG para o ID {rawg_id}: {e}")
 
         sheet = _get_sheet('Jogos')
         if not sheet:
@@ -239,7 +284,7 @@ def add_game_to_sheet(game_data):
         _invalidate_cache()
         return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
+        print(f"ERRO ao adicionar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar jogo."}
         
 def add_wish_to_sheet(wish_data):
@@ -254,7 +299,7 @@ def add_wish_to_sheet(wish_data):
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar item de desejo: {e}"); traceback.print_exc()
+        print(f"ERRO ao adicionar item de desejo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar item de desejo."}
     
 def update_game_in_sheet(game_name, updated_data):
@@ -300,7 +345,7 @@ def update_game_in_sheet(game_name, updated_data):
         _invalidate_cache()
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
-        print(f"Erro ao atualizar jogo: {e}"); traceback.print_exc()
+        print(f"ERRO ao atualizar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao atualizar jogo."}
         
 def delete_game_from_sheet(game_name):
@@ -313,7 +358,7 @@ def delete_game_from_sheet(game_name):
         _invalidate_cache()
         return {"success": True, "message": "Jogo deletado com sucesso."}
     except Exception as e:
-        print(f"Erro ao deletar jogo: {e}"); traceback.print_exc()
+        print(f"ERRO ao deletar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao deletar jogo."}
     
 def update_wish_in_sheet(wish_name, updated_data):
@@ -334,7 +379,7 @@ def update_wish_in_sheet(wish_name, updated_data):
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo atualizado com sucesso."}
     except Exception as e:
-        print(f"Erro ao atualizar item de desejo: {e}"); traceback.print_exc()
+        print(f"ERRO ao atualizar item de desejo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao atualizar item de desejo."}
 
 def delete_wish_from_sheet(wish_name):
@@ -347,7 +392,7 @@ def delete_wish_from_sheet(wish_name):
         _invalidate_cache()
         return {"success": True, "message": "Item de desejo deletado com sucesso."}
     except Exception as e:
-        print(f"Erro ao deletar item de desejo: {e}"); traceback.print_exc()
+        print(f"ERRO ao deletar item de desejo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao deletar item de desejo."}
 
 def _invalidate_cache():
@@ -374,7 +419,7 @@ def purchase_wish_item_in_sheet(item_name):
             return {"success": False, "message": "Coluna 'Status' não encontrada na planilha de Desejos."}
 
     except Exception as e:
-        print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
+        print(f"ERRO ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
 
 # --- Funções de Notificação ---
@@ -388,7 +433,7 @@ def _add_notification(notification_data):
     try:
         sheet = _get_sheet('Notificações')
         if not sheet: 
-            print("Erro: Conexão com a planilha de notificações falhou.")
+            print("ERRO: Conexão com a planilha de notificações falhou ao tentar adicionar notificação.")
             return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
 
         headers = sheet.row_values(1)
@@ -400,7 +445,7 @@ def _add_notification(notification_data):
         _invalidate_cache()
         return {"success": True, "message": "Notificação adicionada com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar notificação: {e}"); traceback.print_exc()
+        print(f"ERRO ao adicionar notificação: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar notificação."}
 
 def _check_wishlist_releases(wishlist_data, existing_notifications):
@@ -424,6 +469,7 @@ def _check_wishlist_releases(wishlist_data, existing_notifications):
         if not release_date_str or not game_name:
             continue
 
+        release_date = None
         try:
             # Tenta parsear a data no formato DD/MM/YYYY
             release_date = datetime.strptime(release_date_str, '%d/%m/%Y').date()
@@ -432,6 +478,7 @@ def _check_wishlist_releases(wishlist_data, existing_notifications):
             try:
                 release_date = datetime.strptime(release_date_str, '%Y-%m-%d').date()
             except ValueError:
+                print(f"AVISO: Data de lançamento inválida para o jogo '{game_name}': '{release_date_str}'. Pulando notificação.")
                 continue # Pula se a data não estiver em um formato reconhecido
 
         delta = release_date - today
@@ -467,6 +514,7 @@ def get_notifications():
     try:
         sheet = _get_sheet('Notificações')
         if not sheet: 
+            print("AVISO: Planilha 'Notificações' não encontrada ou inacessível. Retornando notificações vazias.")
             return {"unread": [], "read": []}
         
         all_notifications = _get_data_from_sheet(sheet)
@@ -480,7 +528,7 @@ def get_notifications():
 
         return {"unread": unread_notifications, "read": read_notifications}
     except Exception as e:
-        print(f"Erro ao obter notificações: {e}"); traceback.print_exc()
+        print(f"ERRO ao obter notificações: {e}"); traceback.print_exc()
         return {"unread": [], "read": []}
 
 def mark_notifications_as_read(notification_ids):
@@ -490,6 +538,7 @@ def mark_notifications_as_read(notification_ids):
     try:
         sheet = _get_sheet('Notificações')
         if not sheet: 
+            print("ERRO: Conexão com a planilha de notificações falhou ao tentar marcar como lida.")
             return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
 
         # Busca todas as notificações para encontrar as linhas correspondentes
@@ -514,5 +563,5 @@ def mark_notifications_as_read(notification_ids):
             return {"success": False, "message": "Nenhuma notificação para marcar como lida ou IDs inválidos."}
 
     except Exception as e:
-        print(f"Erro ao marcar notificações como lidas: {e}"); traceback.print_exc()
+        print(f"ERRO ao marcar notificações como lidas: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao marcar notificações como lidas."}
