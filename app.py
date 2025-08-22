@@ -7,8 +7,6 @@ import os
 # Importa os blueprints
 from routes.game_routes import game_bp
 from routes.auth_routes import auth_bp
-# Importa o novo blueprint de notificações
-from routes.notification_routes import notification_bp 
 
 app = Flask(__name__)
 
@@ -22,8 +20,6 @@ CORS(app)
 # Registra os blueprints
 app.register_blueprint(auth_bp, url_prefix='/api')
 app.register_blueprint(game_bp, url_prefix='/api/games')
-# Registra o novo blueprint de notificações
-app.register_blueprint(notification_bp, url_prefix='/api/notifications') 
 
 @app.route('/')
 def index():
