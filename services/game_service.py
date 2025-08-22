@@ -7,6 +7,7 @@ from config import Config
 from datetime import datetime
 import traceback
 import requests
+import deepl #
 from config import Config
 
 def _get_sheet(sheet_name):
@@ -213,8 +214,25 @@ def add_game_to_sheet(game_data):
                 if response.ok:
                     details = response.json()
                     description = details.get('description_raw', '')
-                    # Adiciona os novos dados ao dicionário que será salvo
-                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
+                    
+                    # --- NOVO: Lógica de tradução com DeepL ---
+                    translated_description = ""
+                    if Config.DEEPL_API_KEY and description:
+                        try:
+                            translator = deepl.Translator(Config.DEEPL_API_KEY) #
+                            # Traduz do idioma detectado para Português do Brasil
+                            result = translator.translate_text(description, target_lang="PT-BR")
+                            translated_description = result.text
+                            print(f"Descrição traduzida com sucesso: {translated_description[:50]}...")
+                        except Exception as deepl_e:
+                            print(f"Erro ao traduzir com DeepL: {deepl_e}")
+                            translated_description = description # Em caso de erro, usa a original
+                    else:
+                        translated_description = description
+
+                    # Adiciona a descrição traduzida ao dicionário que será salvo
+                    game_data['Descricao'] = (translated_description[:495] + '...') if len(translated_description) > 500 else translated_description
+                    
                     game_data['Metacritic'] = details.get('metacritic', '')
 
                     # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
