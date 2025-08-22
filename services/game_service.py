@@ -231,7 +231,7 @@ def add_game_to_sheet(game_data):
                         translated_description = description
 
                     # Adiciona a descrição traduzida ao dicionário que será salvo
-                    game_data['Descricao'] = (translated_description[:495] + '...') if len(translated_description) > 500 else translated_description
+                    game_data['Descricao'] = translated_description
                     
                     game_data['Metacritic'] = details.get('metacritic', '')
 
