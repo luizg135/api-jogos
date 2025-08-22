@@ -33,6 +33,15 @@ def _get_data_from_sheet(sheet):
         print(f"Erro genérico ao ler dados: {e}"); traceback.print_exc()
         return []
 
+def traduzir_texto_grande(texto, max_chars=4000):
+    partes = []
+    # Quebra o texto em pedaços menores
+    for i in range(0, len(texto), max_chars):
+        trecho = texto[i:i+max_chars]
+        traducao = GoogleTranslator(source='auto', target='pt').translate(trecho)
+        partes.append(traducao)
+    return " ".join(partes)
+
 def _check_achievements(games_data, stats, all_achievements, wishlist_data):
     completed = []
     pending = []
@@ -213,14 +222,14 @@ def add_game_to_sheet(game_data):
                     details = response.json()
                     description = details.get('description_raw', '')
                     
-                    # Traduz a descrição
+                    # Tenta traduzir a descrição
                     if description:
                         try:
-                            translated_description = GoogleTranslator(source='auto', target='pt').translate(description)
+                            translated_description = traduzir_texto_grande(description)
                             game_data['Descricao'] = translated_description
                         except Exception as e:
                             print(f"Erro ao traduzir descrição: {e}")
-                            game_data['Descricao'] = description # Mantém original se falhar
+                            game_data['Descricao'] = description # fallback: original
 
                     game_data['Metacritic'] = details.get('metacritic', '')
 
@@ -239,7 +248,8 @@ def add_game_to_sheet(game_data):
         sheet.append_row(row_data)
         return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
-        print(f"Erro ao adicionar jogo: {e}"); traceback.print_exc()
+        print(f"Erro ao adicionar jogo: {e}")
+        traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar jogo."}
         
 def add_wish_to_sheet(wish_data):
