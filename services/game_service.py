@@ -522,9 +522,19 @@ def get_notifications():
         unread_notifications = [n for n in all_notifications if n.get('Status') == 'Não Lida']
         read_notifications = [n for n in all_notifications if n.get('Status') == 'Lida']
 
-        # Ordena as notificações por data (mais recente primeiro)
-        unread_notifications.sort(key=lambda x: datetime.strptime(x.get('Data', '1900-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S'), reverse=True)
-        read_notifications.sort(key=lambda x: datetime.strptime(x.get('Data', '1900-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S'), reverse=True)
+        # Função de chave de ordenação segura que trata datas inválidas
+        def safe_date_sort_key(x):
+            try:
+                # Tenta converter a data no formato esperado
+                return datetime.strptime(x.get('Data', ''), '%Y-%m-%d %H:%M:%S')
+            except (ValueError, TypeError):
+                # Se falhar, retorna uma data muito antiga para que a notificação
+                # seja movida para o final da lista
+                return datetime.min
+
+        # Ordena as notificações usando a função de chave segura
+        unread_notifications.sort(key=safe_date_sort_key, reverse=True)
+        read_notifications.sort(key=safe_date_sort_key, reverse=True)
 
         return {"unread": unread_notifications, "read": read_notifications}
     except Exception as e:
