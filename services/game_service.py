@@ -374,22 +374,24 @@ def create_notification(notification_type, message, game_name=None):
             print("Erro: Planilha de Notificações não encontrada.")
             return
 
+        # Verifica se o cabeçalho existe. Se não, cria.
+        headers = sheet.row_values(1)
+        required_headers = ['ID', 'Tipo', 'Mensagem', 'Data', 'Status', 'Jogo']
+        if headers != required_headers:
+            sheet.clear()
+            sheet.append_row(required_headers)
+
         row = [
             str(uuid.uuid4()),
             notification_type,
             message,
             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            "Não Lida"
+            "Não Lida",
+            game_name
         ]
         
-        # Adiciona o nome do jogo para referência no front
-        headers = sheet.row_values(1)
-        if 'Jogo' not in headers:
-            sheet.append_row(['ID', 'Tipo', 'Mensagem', 'Data', 'Status', 'Jogo'])
-            headers = sheet.row_values(1)
-            
-        row_data = [row[i] if i < len(row) else game_name for i, h in enumerate(headers)]
-        sheet.append_row(row_data)
+        # Adiciona a notificação na primeira linha para aparecer no topo
+        sheet.insert_row(row, 2)
 
     except Exception as e:
         print(f"Erro ao criar notificação: {e}"); traceback.print_exc()
@@ -400,9 +402,14 @@ def get_notifications():
         if not sheet:
             return {"unread": [], "read": []}
 
+        # get_all_records() lida melhor com dados inconsistentes, retorna uma lista de dicionários
         notifications = _get_data_from_sheet(sheet)
-        unread = sorted([n for n in notifications if n.get('Status') == 'Não Lida'], key=lambda x: x.get('Data'), reverse=True)
-        read = sorted([n for n in notifications if n.get('Status') == 'Lida'], key=lambda x: x.get('Data'), reverse=True)
+        
+        # Filtra apenas as notificações válidas antes de ordenar
+        valid_notifications = [n for n in notifications if n.get('ID') and n.get('Data') and n.get('Status')]
+
+        unread = sorted([n for n in valid_notifications if n.get('Status') == 'Não Lida'], key=lambda x: datetime.strptime(x.get('Data'), '%Y-%m-%d %H:%M:%S') if isinstance(x.get('Data'), str) else datetime.min, reverse=True)
+        read = sorted([n for n in valid_notifications if n.get('Status') == 'Lida'], key=lambda x: datetime.strptime(x.get('Data'), '%Y-%m-%d %H:%M:%S') if isinstance(x.get('Data'), str) else datetime.min, reverse=True)
         
         return {"unread": unread, "read": read}
         
@@ -416,13 +423,19 @@ def mark_notifications_as_read(notification_ids):
         if not sheet:
             return {"success": False, "message": "Conexão com a planilha de Notificações falhou."}
 
-        notifications = _get_data_from_sheet(sheet)
+        # Obtém todos os dados da planilha
+        notifications = sheet.get_all_values()
+        header = notifications[0]
+        data_rows = notifications[1:]
         
+        id_col_index = header.index('ID')
+        status_col_index = header.index('Status')
+
         updates = []
-        for n in notifications:
-            if n.get('ID') in notification_ids and n.get('Status') == 'Não Lida':
-                row_index = notifications.index(n) + 2
-                updates.append({'range': f'E{row_index}', 'values': [['Lida']]})
+        for i, row in enumerate(data_rows):
+            if row[id_col_index] in notification_ids and row[status_col_index] == 'Não Lida':
+                cell_range = f'E{i + 2}' # i+2 porque a contagem de linhas do gspread começa em 1, e pulamos o cabeçalho
+                updates.append({'range': cell_range, 'values': [['Lida']]})
         
         if updates:
             sheet.batch_update(updates)
