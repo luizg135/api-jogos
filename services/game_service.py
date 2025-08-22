@@ -491,17 +491,6 @@ def _check_wishlist_releases(wishlist_data, existing_notifications):
         message = None
         notification_date = today.strftime('%Y-%m-%d')
 
-        if delta.days == 0:
-            message = f"O jogo '{game_name}' da sua lista de desejos foi lançado hoje!"
-        elif delta.days == 1:
-            message = f"O jogo '{game_name}' da sua lista de desejos será lançado amanhã!"
-        elif 1 < delta.days <= 7:
-            message = f"O jogo '{game_name}' da sua lista de desejos será lançado em {delta.days} dias!"
-        elif 7 < delta.days <= 15:
-            message = f"O jogo '{game_name}' da sua lista de desejos será lançado em 15 dias!"
-        elif 15 < delta.days <= 30:
-            message = f"O jogo '{game_name}' da sua lista de desejos será lançado em 1 mês!"
-
         if message:
             # Verifica se a notificação já existe para hoje
             if (message, notification_date) not in existing_release_notifications:
