@@ -12,7 +12,7 @@ from config import Config
 def _get_sheet(sheet_name):
     try:
         creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        scope = ['[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)', '[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)']
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
@@ -148,12 +148,12 @@ def get_all_game_data():
 
 def get_public_profile_data():
     try:
-        game_sheet = _get_sheet('Jogos'); games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
-        profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
-        profile_data = {item['Chave']: item['Valor'] for item in profile_records}
+        games_data = _get_data_from_sheet(_get_sheet('Jogos'))
+        profile_data = _get_data_from_sheet(_get_sheet('Perfil'))
+        profile_records = {item['Chave']: item['Valor'] for item in profile_data if 'Chave' in item and 'Valor' in item}
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
-        # Calcula as estatísticas públicas
+        # Calcula as estatísticas públicas (sem custo total)
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
 
@@ -165,24 +165,21 @@ def get_public_profile_data():
             'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
         }
 
-        # Conquistas desbloqueadas para o cálculo do nível e rank
         completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, [])
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         public_stats = {**base_stats, **gamer_stats}
-        
-        # Filtra os últimos 5 jogos platinados com imagens
+
         recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
         recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
         
         return {
-            'perfil': profile_data,
+            'perfil': profile_records,
             'estatisticas': public_stats,
             'ultimos_platinados': recent_platinums[:5]
         }
     except Exception as e:
         print(f"Erro ao buscar dados do perfil público: {e}"); traceback.print_exc()
         return {'perfil': {}, 'estatisticas': {}, 'ultimos_platinados': []}
-
 
 def update_profile_in_sheet(profile_data):
     try:
@@ -193,7 +190,6 @@ def update_profile_in_sheet(profile_data):
                 cell = sheet.find(key)
                 sheet.update_cell(cell.row, cell.col + 1, value)
             except gspread.exceptions.CellNotFound:
-                # Cria a chave se ela não existir
                 sheet.append_row([key, value])
         _invalidate_cache()
         return {"success": True, "message": "Perfil atualizado com sucesso."}
@@ -203,22 +199,18 @@ def update_profile_in_sheet(profile_data):
 
 def add_game_to_sheet(game_data):
     try:
-        # Pega o ID da RAWG dos dados recebidos
         rawg_id = game_data.get('RAWG_ID')
 
         if rawg_id and Config.RAWG_API_KEY:
             try:
-                # Busca os detalhes completos na API da RAWG
-                url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
+                url = f"[https://api.rawg.io/api/games/](https://api.rawg.io/api/games/){rawg_id}?key={Config.RAWG_API_KEY}"
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
                     description = details.get('description_raw', '')
-                    # Adiciona os novos dados ao dicionário que será salvo
                     game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
                     game_data['Metacritic'] = details.get('metacritic', '')
 
-                    # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
                     screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
                     game_data['Screenshots'] = ', '.join(screenshots_list)
             except requests.exceptions.RequestException as e:
@@ -228,7 +220,6 @@ def add_game_to_sheet(game_data):
         if not sheet:
             return {"success": False, "message": "Conexão com a planilha falhou."}
 
-        # Lógica dinâmica para salvar todos os dados
         headers = sheet.row_values(1)
         row_data = [game_data.get(header, '') for header in headers]
 
@@ -340,7 +331,6 @@ def purchase_wish_item_in_sheet(item_name):
         except gspread.exceptions.CellNotFound:
             return {"success": False, "message": "Item de desejo não encontrado."}
 
-        # Encontra a coluna "Status" e atualiza a célula
         headers = sheet.row_values(1)
         try:
             status_col_index = headers.index('Status') + 1
@@ -353,3 +343,109 @@ def purchase_wish_item_in_sheet(item_name):
     except Exception as e:
         print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
+
+def get_public_profile_data():
+    try:
+        games_data = _get_data_from_sheet(_get_sheet('Jogos'))
+        profile_data = _get_data_from_sheet(_get_sheet('Perfil'))
+        profile_records = {item['Chave']: item['Valor'] for item in profile_data if 'Chave' in item and 'Valor' in item}
+        achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
+
+        tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
+        notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
+        
+        base_stats = {
+            'total_jogos': len(games_data),
+            'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
+            'total_horas_jogadas': sum(tempos_de_jogo),
+            'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
+            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
+        }
+
+        completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, [])
+        gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
+        public_stats = {**base_stats, **gamer_stats}
+        
+        recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
+        recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
+        
+        return {
+            'perfil': profile_records,
+            'estatisticas': public_stats,
+            'ultimos_platinados': recent_platinums[:5]
+        }
+    except Exception as e:
+        print(f"Erro ao buscar dados do perfil público: {e}"); traceback.print_exc()
+        return {'perfil': {}, 'estatisticas': {}, 'ultimos_platinados': []}
+
+def get_notifications_data(only_unread=False):
+    """
+    Retorna as notificações de uma nova planilha chamada 'Notificações'.
+    Se 'only_unread' for True, filtra apenas as não lidas.
+    """
+    try:
+        notifications_sheet = _get_sheet('Notificações')
+        if not notifications_sheet:
+            print("Aviso: Planilha de Notificações não encontrada. Criando...")
+            # Implementação de criação da planilha aqui, se necessário.
+            # Por simplicidade, vamos apenas retornar uma lista vazia.
+            return []
+
+        all_notifications = _get_data_from_sheet(notifications_sheet)
+        
+        if only_unread:
+            return [n for n in all_notifications if n.get('Status') == 'nao_lida']
+        
+        return all_notifications
+
+    except Exception as e:
+        print(f"Erro ao buscar notificações: {e}"); traceback.print_exc()
+        return []
+
+def mark_notifications_as_read(notification_ids):
+    """Marca uma ou mais notificações como lidas."""
+    try:
+        notifications_sheet = _get_sheet('Notificações')
+        if not notifications_sheet:
+            return {"success": False, "message": "Planilha de Notificações não encontrada."}
+        
+        all_records = notifications_sheet.get_all_records()
+        df = pd.DataFrame(all_records)
+        
+        rows_to_update = []
+        for i, row in df.iterrows():
+            if row.get('ID') in notification_ids and row.get('Status') == 'nao_lida':
+                rows_to_update.append(i + 2) # +2 para o índice da planilha (cabeçalho + 1)
+        
+        if not rows_to_update:
+            return {"success": False, "message": "Nenhuma notificação para marcar como lida."}
+
+        for row_index in rows_to_update:
+            notifications_sheet.update_cell(row_index, df.columns.get_loc('Status') + 1, 'lida')
+            
+        return {"success": True, "message": f"{len(rows_to_update)} notificações marcadas como lidas."}
+    
+    except Exception as e:
+        print(f"Erro ao marcar notificações como lidas: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao marcar notificações como lidas."}
+
+def add_notification(type, message):
+    """Adiciona uma nova notificação à planilha."""
+    try:
+        notifications_sheet = _get_sheet('Notificações')
+        if not notifications_sheet:
+            return {"success": False, "message": "Planilha de Notificações não encontrada."}
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        new_notification = [
+            str(uuid.uuid4()), # Gera um ID único para a notificação
+            type,
+            message,
+            timestamp,
+            'nao_lida'
+        ]
+        notifications_sheet.append_row(new_notification)
+        return {"success": True, "message": "Notificação adicionada com sucesso."}
+    except Exception as e:
+        print(f"Erro ao adicionar notificação: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao adicionar notificação."}
