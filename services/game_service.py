@@ -86,16 +86,22 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
         elif game.get('Status') == 'Platinado': total_exp += 500
         try:
             # Lida com valores vazios ou não numéricos
-            nota_str = str(g.get('Nota', '0')).replace(',', '.')
-            if nota_str.lower() != 'none':
+            nota_str = str(game.get('Nota', '0')).replace(',', '.')
+            if nota_str.lower() != 'none' and nota_str.strip():
                 nota = float(nota_str)
                 if nota > 0: total_exp += int(nota * 10)
-        except ValueError:
+        except (ValueError, TypeError):
             pass
-        total_exp += int(g.get('Conquistas Obtidas', 0))
+        try:
+            total_exp += int(game.get('Conquistas Obtidas', 0))
+        except (ValueError, TypeError):
+            pass
 
     for ach in unlocked_achievements:
-        total_exp += int(ach.get('EXP', 0))
+        try:
+            total_exp += int(ach.get('EXP', 0))
+        except (ValueError, TypeError):
+            pass
 
     exp_per_level = 1000
     nivel = math.floor(total_exp / exp_per_level)
@@ -152,26 +158,34 @@ def get_all_game_data():
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
 
         def sort_key(game):
-            try: 
+            try:
                 nota_str = str(game.get('Nota', '-1')).replace(',', '.')
                 nota = float(nota_str) if nota_str.lower() != 'none' else -1
-            except (ValueError, TypeError): 
+            except (ValueError, TypeError):
                 nota = -1
             return (-nota, game.get('Nome', '').lower())
         games_data.sort(key=sort_key)
 
-        notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota') and str(g.get('Nota', '0')).lower() != 'none']
+        notas = []
+        for g in games_data:
+            nota_str = str(g.get('Nota', '0')).replace(',', '.')
+            if nota_str.lower() != 'none' and nota_str.strip():
+                try:
+                    notas.append(float(nota_str))
+                except (ValueError, TypeError):
+                    pass
+                    
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
         
         base_stats = {
             'total_jogos': len(games_data),
             'total_finalizados': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado']]),
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
-            'total_avaliados': len([g for g in games_data if g.get('Nota') and float(str(g.get('Nota')).replace(',', '.')) > 0]),
+            'total_avaliados': len([g for g in games_data if g.get('Nota') and str(g.get('Nota', '0')).replace(',', '.').strip().lower() != 'none']),
             'total_horas_jogadas': sum(tempos_de_jogo),
             'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
             'media_notas': round(sum(notas) / len(notas), 2) if notas else 0,
-            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
+            'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data if str(g.get('Conquistas Obtidas', '0')).strip().lower() != 'none']),
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
             'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
             'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
