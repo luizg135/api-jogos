@@ -8,8 +8,7 @@ from datetime import datetime
 import traceback
 import requests
 from config import Config
-import argostranslate.package
-import argostranslate.translate
+from deep_translator import GoogleTranslator
 
 def _get_sheet(sheet_name):
     try:
@@ -206,18 +205,6 @@ def add_game_to_sheet(game_data):
     try:
         rawg_id = game_data.get('RAWG_ID')
         
-        # Instala o pacote de tradução necessário (en para pt)
-        from_code = "en"
-        to_code = "pt"
-        argostranslate.package.update_package_index()
-        available_packages = argostranslate.package.get_available_packages()
-        package_to_install = next(
-            filter(
-                lambda x: x.from_code == from_code and x.to_code == to_code, available_packages
-            )
-        )
-        argostranslate.package.install_from_path(package_to_install.download())
-
         if rawg_id and Config.RAWG_API_KEY:
             try:
                 url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
@@ -229,7 +216,8 @@ def add_game_to_sheet(game_data):
                     # Tenta traduzir a descrição
                     if description:
                         try:
-                            translated_description = argostranslate.translate.translate(description, from_code, to_code)
+                            # Traduz do idioma detectado automaticamente para português (Brasil)
+                            translated_description = GoogleTranslator(source='auto', target='pt').translate(description)
                             game_data['Descricao'] = translated_description
                         except Exception as e:
                             print(f"Erro ao traduzir descrição: {e}")
