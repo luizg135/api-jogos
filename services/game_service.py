@@ -4,7 +4,7 @@ import json
 import math
 from oauth2client.service_account import ServiceAccountCredentials
 from config import Config
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 import requests
 from config import Config
@@ -102,6 +102,41 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
         if nivel >= level_req: rank_gamer = rank_name
     return {'nivel_gamer': nivel, 'rank_gamer': rank_gamer, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
 
+def _check_release_dates(wishlist_data):
+    try:
+        notifications = get_notifications()
+        notified_releases = {n.get('Jogo') for n in notifications.get('read', []) + notifications.get('unread', []) if n.get('Tipo') == 'Lançamento'}
+        today = datetime.now().date()
+        
+        for item in wishlist_data:
+            release_date_str = item.get('Data Lançamento')
+            item_name = item.get('Nome')
+            
+            # Pula jogos sem uma data de lançamento válida
+            if not release_date_str or not any(char.isdigit() for char in release_date_str):
+                continue
+            
+            try:
+                # Trata o formato de data "DD/MM/AAAA"
+                release_date = datetime.strptime(release_date_str, '%d/%m/%Y').date()
+            except ValueError:
+                print(f"Formato de data inválido para {item_name}: {release_date_str}")
+                continue
+
+            # Calcula a diferença em dias
+            days_until_release = (release_date - today).days
+
+            # Intervalos de notificação
+            notification_days = [30, 15, 10, 7, 3, 2, 1]
+            
+            # Verifica se o jogo deve ser notificado e se ainda não foi notificado para esse tipo
+            if days_until_release in notification_days and item_name not in notified_releases:
+                create_notification("Lançamento", f"Faltam {days_until_release} dias para o lançamento de '{item_name}'!", item_name)
+                # Adiciona o nome do jogo ao set para evitar duplicatas na mesma execução
+                notified_releases.add(item_name)
+    except Exception as e:
+        print(f"Erro ao verificar datas de lançamento: {e}"); traceback.print_exc()
+
 def get_all_game_data():
     try:
         game_sheet = _get_sheet('Jogos'); games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
@@ -144,6 +179,8 @@ def get_all_game_data():
         completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         final_stats = {**base_stats, **gamer_stats}
+        
+        _check_release_dates(all_wishlist_data)
 
         return {
             'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
