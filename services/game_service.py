@@ -7,7 +7,7 @@ from config import Config
 from datetime import datetime
 import traceback
 import requests
-from config import Config
+from googletrans import Translator
 
 def _get_sheet(sheet_name):
     try:
@@ -212,9 +212,17 @@ def add_game_to_sheet(game_data):
                 response = requests.get(url)
                 if response.ok:
                     details = response.json()
-                    description = details.get('description_raw', '')
+                    description_en = details.get('description_raw', '')
+                    
+                    # Traduz a descrição para o português
+                    if description_en:
+                        translator = Translator()
+                        description_pt = translator.translate(description_en, dest='pt').text
+                    else:
+                        description_pt = ''
+                    
                     # Adiciona os novos dados ao dicionário que será salvo
-                    game_data['Descricao'] = (description[:495] + '...') if len(description) > 500 else description
+                    game_data['Descricao'] = (description_pt[:495] + '...') if len(description_pt) > 500 else description_pt
                     game_data['Metacritic'] = details.get('metacritic', '')
 
                     # CORREÇÃO AQUI: Usando 'short_screenshots' para pegar as imagens
