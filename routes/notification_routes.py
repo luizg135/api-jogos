@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
-from services import game_service
+from services import notification_service # Altere a importação
 import traceback
 
 notification_bp = Blueprint('notifications', __name__)
@@ -12,8 +12,16 @@ def get_user_notifications():
     Retorna as notificações do usuário, separando-as em lidas e não lidas.
     """
     try:
-        notifications = game_service.get_notifications()
-        return jsonify(notifications)
+        all_notifications = notification_service.get_all_notifications()
+        # Aqui a sua lógica para separar as notificações lidas das não lidas
+        unread_notifications = [n for n in all_notifications if n['Status'] == 'unread']
+        read_notifications = [n for n in all_notifications if n['Status'] == 'read']
+        
+        return jsonify({
+            'unread_count': len(unread_notifications),
+            'unread': unread_notifications,
+            'read': read_notifications
+        })
     except Exception as e:
         print(f"!!! ERRO ao buscar notificações: {e}")
         traceback.print_exc()
@@ -32,7 +40,8 @@ def mark_notifications_as_read_route():
         if not notification_ids:
             return jsonify({"success": False, "message": "Nenhum ID de notificação fornecido."}), 400
         
-        result = game_service.mark_notifications_as_read(notification_ids)
+        # Chama a função do novo serviço
+        result = notification_service.mark_notifications_as_read(notification_ids)
         return jsonify(result)
     except Exception as e:
         print(f"!!! ERRO ao marcar notificações como lidas: {e}")
