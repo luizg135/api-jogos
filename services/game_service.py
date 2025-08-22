@@ -4,10 +4,10 @@ import json
 import math
 from oauth2client.service_account import ServiceAccountCredentials
 from config import Config
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 import requests
-from config import Config
+import uuid # Para gerar IDs únicos para as notificações
 
 def _get_sheet(sheet_name):
     try:
@@ -103,6 +103,7 @@ def get_all_game_data():
         profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
+        notifications_sheet = _get_sheet('Notificações'); all_notifications = _get_data_from_sheet(notifications_sheet) if notifications_sheet else []
 
         def sort_key(game):
             try: nota = float(str(game.get('Nota', '-1')).replace(',', '.'))
@@ -136,6 +137,9 @@ def get_all_game_data():
         completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         final_stats = {**base_stats, **gamer_stats}
+
+        # Gerar notificações de lançamento de jogos da lista de desejos
+        _check_wishlist_releases(all_wishlist_data, all_notifications)
 
         return {
             'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
@@ -182,7 +186,6 @@ def get_public_profile_data():
     except Exception as e:
         print(f"Erro ao buscar dados do perfil público: {e}"); traceback.print_exc()
         return {'perfil': {}, 'estatisticas': {}, 'ultimos_platinados': []}
-
 
 def update_profile_in_sheet(profile_data):
     try:
@@ -260,20 +263,40 @@ def update_game_in_sheet(game_name, updated_data):
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         try: cell = sheet.find(game_name)
         except gspread.exceptions.CellNotFound: return {"success": False, "message": "Jogo não encontrado."}
-        row_values = sheet.row_values(cell.row)
+        
+        # Captura o estado anterior do jogo para verificar mudanças que podem gerar notificações
+        previous_game_data = sheet.row_values(cell.row)
+        headers = sheet.row_values(1)
+        previous_game_dict = dict(zip(headers, previous_game_data))
+
         column_map = {
             'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
             'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
             'Estilo': 8, 'Link': 9, 'Adquirido em': 10, 'Início em': 11,
             'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14
         }
-        new_row = list(row_values)
+        new_row = list(previous_game_data) # Começa com os valores existentes
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
                 new_row[col_index] = value
+        
         sheet.update(f'A{cell.row}', [new_row])
+        
+        # --- Lógica de Geração de Notificações de Conquistas ---
+        # A lógica completa de conquistas é mais complexa, mas para este exemplo,
+        # vamos simular uma notificação se o status mudar para 'Platinado' e não era antes.
+        if previous_game_dict.get('Platinado?') != 'Sim' and updated_data.get('Platinado?') == 'Sim':
+            _add_notification({
+                'Tipo': 'Conquista',
+                'Mensagem': f"Parabéns! Você platinou o jogo '{game_name}'!",
+                'Data': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'Status': 'Não Lida'
+            })
+        # Você pode adicionar mais lógica aqui para outros tipos de conquistas
+        # Por exemplo, se 'Conquistas Obtidas' aumentar significativamente, etc.
+
         _invalidate_cache()
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
@@ -353,3 +376,143 @@ def purchase_wish_item_in_sheet(item_name):
     except Exception as e:
         print(f"Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
+
+# --- Funções de Notificação ---
+
+def _add_notification(notification_data):
+    """
+    Adiciona uma nova notificação à planilha 'Notificações'.
+    notification_data deve ser um dicionário com 'Tipo', 'Mensagem', 'Data', 'Status'.
+    Um ID único será gerado automaticamente.
+    """
+    try:
+        sheet = _get_sheet('Notificações')
+        if not sheet: 
+            print("Erro: Conexão com a planilha de notificações falhou.")
+            return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
+
+        headers = sheet.row_values(1)
+        # Garante que o ID seja único
+        notification_data['ID'] = str(uuid.uuid4())
+        
+        row_data = [notification_data.get(header, '') for header in headers]
+        sheet.append_row(row_data)
+        _invalidate_cache()
+        return {"success": True, "message": "Notificação adicionada com sucesso."}
+    except Exception as e:
+        print(f"Erro ao adicionar notificação: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao adicionar notificação."}
+
+def _check_wishlist_releases(wishlist_data, existing_notifications):
+    """
+    Verifica a lista de desejos para jogos com lançamento próximo e gera notificações.
+    Evita gerar notificações duplicadas para o mesmo evento.
+    """
+    today = datetime.now().date()
+    
+    # IDs de notificações de lançamento já existentes para evitar duplicação
+    existing_release_notifications = {
+        (n.get('Mensagem'), n.get('Data').split(' ')[0]) 
+        for n in existing_notifications 
+        if n.get('Tipo') == 'Lançamento'
+    }
+
+    for item in wishlist_data:
+        release_date_str = item.get('Data Lançamento')
+        game_name = item.get('Nome')
+
+        if not release_date_str or not game_name:
+            continue
+
+        try:
+            # Tenta parsear a data no formato DD/MM/YYYY
+            release_date = datetime.strptime(release_date_str, '%d/%m/%Y').date()
+        except ValueError:
+            # Se não conseguir, tenta YYYY-MM-DD (formato de input date)
+            try:
+                release_date = datetime.strptime(release_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                continue # Pula se a data não estiver em um formato reconhecido
+
+        delta = release_date - today
+        message = None
+        notification_date = today.strftime('%Y-%m-%d')
+
+        if delta.days == 0:
+            message = f"O jogo '{game_name}' da sua lista de desejos foi lançado hoje!"
+        elif delta.days == 1:
+            message = f"O jogo '{game_name}' da sua lista de desejos será lançado amanhã!"
+        elif 1 < delta.days <= 7:
+            message = f"O jogo '{game_name}' da sua lista de desejos será lançado em {delta.days} dias!"
+        elif 7 < delta.days <= 15:
+            message = f"O jogo '{game_name}' da sua lista de desejos será lançado em 15 dias!"
+        elif 15 < delta.days <= 30:
+            message = f"O jogo '{game_name}' da sua lista de desejos será lançado em 1 mês!"
+
+        if message:
+            # Verifica se a notificação já existe para hoje
+            if (message, notification_date) not in existing_release_notifications:
+                _add_notification({
+                    'Tipo': 'Lançamento',
+                    'Mensagem': message,
+                    'Data': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'Status': 'Não Lida'
+                })
+                existing_release_notifications.add((message, notification_date)) # Adiciona para evitar duplicação em chamadas futuras no mesmo dia
+
+def get_notifications():
+    """
+    Retorna todas as notificações, separando-as em lidas e não lidas.
+    """
+    try:
+        sheet = _get_sheet('Notificações')
+        if not sheet: 
+            return {"unread": [], "read": []}
+        
+        all_notifications = _get_data_from_sheet(sheet)
+        
+        unread_notifications = [n for n in all_notifications if n.get('Status') == 'Não Lida']
+        read_notifications = [n for n in all_notifications if n.get('Status') == 'Lida']
+
+        # Ordena as notificações por data (mais recente primeiro)
+        unread_notifications.sort(key=lambda x: datetime.strptime(x.get('Data', '1900-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S'), reverse=True)
+        read_notifications.sort(key=lambda x: datetime.strptime(x.get('Data', '1900-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S'), reverse=True)
+
+        return {"unread": unread_notifications, "read": read_notifications}
+    except Exception as e:
+        print(f"Erro ao obter notificações: {e}"); traceback.print_exc()
+        return {"unread": [], "read": []}
+
+def mark_notifications_as_read(notification_ids):
+    """
+    Marca uma lista de notificações como 'Lida' na planilha.
+    """
+    try:
+        sheet = _get_sheet('Notificações')
+        if not sheet: 
+            return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
+
+        # Busca todas as notificações para encontrar as linhas correspondentes
+        all_records = sheet.get_all_records()
+        headers = sheet.row_values(1)
+        
+        updates = []
+        for i, record in enumerate(all_records):
+            if record.get('ID') in notification_ids and record.get('Status') == 'Não Lida':
+                row_index = i + 2 # +2 porque get_all_records é 0-index e a planilha é 1-index, e a primeira linha são os cabeçalhos
+                status_col_index = headers.index('Status') + 1 # +1 porque gspread é 1-index para colunas
+                updates.append({
+                    'range': f"{gspread.utils.rowcol_to_a1(row_index, status_col_index)}",
+                    'values': [['Lida']]
+                })
+        
+        if updates:
+            sheet.batch_update(updates)
+            _invalidate_cache()
+            return {"success": True, "message": f"{len(updates)} notificações marcadas como lidas."}
+        else:
+            return {"success": False, "message": "Nenhuma notificação para marcar como lida ou IDs inválidos."}
+
+    except Exception as e:
+        print(f"Erro ao marcar notificações como lidas: {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao marcar notificações como lidas."}
