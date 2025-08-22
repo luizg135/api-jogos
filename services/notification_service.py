@@ -1,4 +1,3 @@
-# services/notification_service.py
 import gspread
 import json
 from datetime import datetime
@@ -6,12 +5,14 @@ import traceback
 import hashlib
 from config import Config
 from services import game_service
+from oauth2client.service_account import ServiceAccountCredentials
+
 
 def _get_sheet(sheet_name):
     try:
         creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds = gspread.service_account_from_dict(creds_json, scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
         return spreadsheet.worksheet(sheet_name)
