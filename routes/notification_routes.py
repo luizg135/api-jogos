@@ -5,7 +5,7 @@ import traceback
 
 notification_bp = Blueprint('notifications', __name__)
 
-@notification_bp.route('/', methods=['GET']) # <-- AQUI ESTÁ A CORREÇÃO: 'GET'])
+@notification_bp.route('', methods=['GET']) # <-- AQUI ESTÁ A CORREÇÃO: 'GET'])
 @jwt_required()
 def get_user_notifications():
     """
