@@ -28,7 +28,7 @@ def search_external_games():
         return jsonify({"error": "Chave da API externa não configurada no servidor."}), 500
 
     try:
-        url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={query}&page_size=5"
+        url = f"[https://api.rawg.io/api/games?key=](https://api.rawg.io/api/games?key=){Config.RAWG_API_KEY}&search={query}&page_size=5"
         response = requests.get(url)
         response.raise_for_status()
         rawg_data = response.json()
@@ -165,3 +165,28 @@ def delete_item(list_type, item_name):
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "message": "Erro ao deletar item.", "detalhes_tecnicos": str(e)}), 500
+
+@game_bp.route('/notifications', methods=['GET'])
+@jwt_required()
+def get_notifications():
+    """Retorna todas as notificações do usuário."""
+    try:
+        notifications = game_service.get_notifications_data()
+        return jsonify(notifications)
+    except Exception as e:
+        return jsonify({"error": "Não foi possível obter as notificações."}), 500
+        
+@game_bp.route('/notifications/mark-read', methods=['POST'])
+@jwt_required()
+def mark_notifications_read():
+    """Marca notificações como lidas."""
+    try:
+        data = request.json
+        notification_ids = data.get('ids', [])
+        if not notification_ids:
+            return jsonify({"success": False, "message": "Nenhum ID de notificação fornecido."}), 400
+        
+        result = game_service.mark_notifications_as_read(notification_ids)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "message": "Erro ao marcar notificações como lidas."}), 500
