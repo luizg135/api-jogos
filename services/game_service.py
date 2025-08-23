@@ -9,7 +9,6 @@ import traceback
 import requests
 import deepl
 import pytz
-from fuzzywuzzy import process # Importar fuzzywuzzy
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
@@ -234,52 +233,6 @@ def mark_notification_as_read(notification_id):
 
 # --- FIM DAS Funções de Notificação ---
 
-# --- NOVO: Função para buscar dados de preço do catálogo ---
-def _get_price_data_from_catalog(game_title):
-    """
-    Busca dados de preço de um jogo no Catálogo PSN e Steam Final usando fuzzy matching.
-    Retorna um dicionário com os preços encontrados ou None.
-    """
-    catalog_data = _get_data_from_sheet('Catálogo PSN e Steam Final')
-    if not catalog_data:
-        print("AVISO: Planilha 'Catálogo PSN e Steam Final' vazia ou não encontrada.")
-        return None
-
-    catalog_titles = [item.get('Título do Jogo', '') for item in catalog_data]
-    
-    # Encontra a melhor correspondência usando fuzzy matching
-    # score_cutoff: Apenas retorna correspondências com score acima de 80
-    match = process.extractOne(game_title, catalog_titles, score_cutoff=80) 
-
-    if match:
-        matched_title, score = match
-        print(f"Fuzzy match encontrado para '{game_title}': '{matched_title}' com score {score}")
-        
-        # Encontra o item completo correspondente na lista original
-        matched_item = next((item for item in catalog_data if item.get('Título do Jogo') == matched_title), None)
-        
-        if matched_item:
-            # Função auxiliar para parsear e limpar strings de preço
-            def parse_price_string(price_str_raw):
-                price_str = str(price_str_raw).replace('R$', '').strip()
-                price_str = price_str.replace('.', '') # Remove thousand separators
-                price_str = price_str.replace(',', '.') # Change decimal comma to decimal point
-                try:
-                    return float(price_str)
-                except ValueError:
-                    return 0.0 # Retorna 0.0 se não conseguir converter
-
-            return {
-                'PS Preço Atual': parse_price_string(matched_item.get('PS Preço Atual', '0,00')),
-                'PS Menor Preço Histórico': parse_price_string(matched_item.get('PS Menor Preço Histórico', '0,00')),
-                'Steam Preço Atual': parse_price_string(matched_item.get('Steam Preço Atual', '0,00')),
-                'Steam Menor Preço Histórico': parse_price_string(matched_item.get('Steam Menor Preço Histórico', '0,00')),
-            }
-    print(f"Nenhuma correspondência de preço encontrada para '{game_title}' no catálogo.")
-    return None
-# --- FIM NOVO ---
-
-
 def get_all_game_data():
     try:
         game_sheet_data = _get_data_from_sheet('Jogos'); games_data = game_sheet_data if game_sheet_data else []
@@ -345,6 +298,7 @@ def get_all_game_data():
             release_date_str = wish.get('Data Lançamento')
             if release_date_str:
                 try:
+                    # --- MODIFICAÇÃO AQUI: Tentar parsear a data no formato DD/MM/YYYY primeiro ---
                     release_date = None
                     if '/' in release_date_str: # dd/mm/yyyy
                         release_date = datetime.strptime(release_date_str, "%d/%m/%Y")
@@ -355,8 +309,9 @@ def get_all_game_data():
                         print(f"AVISO: Data de lançamento inválida ou formato desconhecido para '{wish.get('Nome')}': {release_date_str}")
                         continue # Ignora datas em formato desconhecido
                     
-                    # Atribuir o fuso horário de Brasília à release_date
+                    # --- NOVO: Atribuir o fuso horário de Brasília à release_date ---
                     release_date = brasilia_tz.localize(release_date.replace(hour=0, minute=0, second=0, microsecond=0))
+                    # --- FIM NOVO ---
 
                     time_to_release = release_date - today
                     days_to_release = time_to_release.days
@@ -385,10 +340,9 @@ def get_all_game_data():
         # --- FIM NOVO ---
 
         return {
-            'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': all_wishlist_data, # Retorna all_wishlist_data sem filtrar
-            'perfil': profile_data,
+            'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
             'conquistas_concluidas': completed_achievements,
-            'conquistas_pendentes': pending_achievements # CORRIGIDO AQUI
+            'conquistas_pendentes': pending_achievements
         }
     except Exception as e:
         print(f"Erro ao buscar dados: {e}"); traceback.print_exc()
@@ -518,14 +472,10 @@ def add_wish_to_sheet(wish_data):
     try:
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        
-        price_data = _get_price_data_from_catalog(wish_data.get('Nome', ''))
-        if price_data:
-            wish_data.update(price_data)
-
-        headers = sheet.row_values(1)
-        row_data = [wish_data.get(header, '') for header in headers]
-
+        row_data = [
+            wish_data.get('Nome', ''), wish_data.get('Link', ''),
+            wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
+        ]
         sheet.append_row(row_data)
         _invalidate_cache('Desejos') # Invalida o cache de desejos
         _add_notification("Novo Desejo Adicionado", f"Você adicionou '{wish_data.get('Nome', 'Um novo jogo')}' à sua lista de desejos!")
@@ -596,35 +546,17 @@ def update_wish_in_sheet(wish_name, updated_data):
     try:
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        
-        # --- CORREÇÃO AQUI: Encontrar a célula pelo nome original do item ---
-        try:
-            cell = sheet.find(wish_name) # Busca pelo nome original do item
-        except gspread.exceptions.CellNotFound:
-            return {"success": False, "message": f"Item de desejo '{wish_name}' não encontrado para atualização."}
-        # --- FIM CORREÇÃO ---
-
-        # --- NOVO: Buscar dados de preço do catálogo ao atualizar item da wishlist ---
-        price_data = _get_price_data_from_catalog(updated_data.get('Nome', wish_name))
-        if price_data:
-            updated_data.update(price_data)
-        # --- FIM NOVO ---
-
+        cell = sheet.find(wish_name)
+        if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
         row_values = sheet.row_values(cell.row) # Obter a linha existente
         headers = sheet.row_values(1)
-        # --- MODIFICAÇÃO AQUI: Adicionar as novas colunas de preço ao column_map ---
-        column_map = {
-            'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3,
-            'PS Preço Atual': 4, 'PS Menor Preço Histórico': 5,
-            'Steam Preço Atual': 6, 'Steam Menor Preço Histórico': 7
-        }
-        # --- FIM MODIFICAÇÃO ---
+        column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Status': 3, 'Preço': 4}
         new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
                 while len(new_row) <= col_index: new_row.append('')
-                if key in ['Preço', 'PS Preço Atual', 'PS Menor Preço Histórico', 'Steam Preço Atual', 'Steam Menor Preço Histórico'] and value is not None:
+                if key == 'Preço' and value is not None:
                     new_row[col_index] = float(value)
                 else:
                     new_row[col_index] = value
