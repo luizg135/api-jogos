@@ -150,6 +150,8 @@ def get_all_game_data():
 def get_public_profile_data():
     try:
         game_sheet = _get_sheet('Jogos'); games_data = _get_data_from_sheet(game_sheet) if game_sheet else []
+        wishlist_sheet = _get_sheet('Desejos')
+        all_wishlist_data = _get_data_from_sheet(wishlist_sheet) if wishlist_sheet else []
         profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
@@ -158,16 +160,32 @@ def get_public_profile_data():
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
 
+        # --- INÍCIO DA MODIFICAÇÃO: Calcular um conjunto mais completo de base_stats ---
         base_stats = {
             'total_jogos': len(games_data),
+            'total_finalizados': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado']]),
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']),
+            'total_avaliados': len([g for g in games_data if g.get('Nota') and float(str(g.get('Nota')).replace(',', '.')) > 0]),
             'total_horas_jogadas': sum(tempos_de_jogo),
+            'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
             'media_notas': sum(notas) / len(notas) if notas else 0,
             'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
+            'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
+            'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
+            'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
+            'max_horas_um_jogo': max(tempos_de_jogo) if tempos_de_jogo else 0,
+            'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
+            'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
+            'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
+            'total_notas_10': len([n for n in notas if n == 100]),
+            'total_notas_baixas': len([n for n in notas if n <= 30]),
+            'WISHLIST_TOTAL': len(all_wishlist_data) # Inclui o total da wishlist para cálculo de conquistas
         }
+        # --- FIM DA MODIFICAÇÃO ---
 
         # Conquistas desbloqueadas para o cálculo do nível e rank
-        completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, [])
+        # Passa all_wishlist_data para _check_achievements para que WISHLIST_TOTAL seja calculado corretamente
+        completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         public_stats = {**base_stats, **gamer_stats}
         
