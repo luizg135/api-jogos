@@ -4,11 +4,11 @@ import json
 import math
 from oauth2client.service_account import ServiceAccountCredentials
 from config import Config
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 import requests
-import deepl #
-from config import Config
+import deepl
+import pytz # Importar pytz
 
 def _get_sheet(sheet_name):
     try:
@@ -93,7 +93,7 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
     rank_gamer = "Bronze"
     for level_req, rank_name in ranks.items():
         if nivel >= level_req: rank_gamer = rank_name
-    return {'nivel_gamer': nivel, 'rank_gamer': rank_gamer, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
+    return {'nivel_gamer': nivel, 'rank_gamer': rank_name, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
 
 # --- Funções para gerenciar notificações ---
 def _get_notifications_sheet():
@@ -109,15 +109,19 @@ def _add_notification(notification_type, message):
 
     notifications = _get_data_from_sheet(sheet)
     for notif in notifications:
-        # Considera uma notificação duplicada se for do mesmo tipo e mensagem, e não lida
+        # Considera uma notificação duplicada se for do mesmo tipo e mensagem
+        # e não foi marcada como lida (ou seja, ainda está ativa ou foi lida mas queremos evitar repetição)
         if notif.get('Tipo') == notification_type and \
-           notif.get('Mensagem') == message and \
-           str(notif.get('Lida', 'Não')) == 'Não': # Garante comparação como string
+           notif.get('Mensagem') == message:
             print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message}'")
             return {"success": False, "message": "Notificação duplicada evitada."}
 
     new_id = len(notifications) + 1
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # --- MODIFICAÇÃO: Usar fuso horário de Brasília ---
+    brasilia_tz = pytz.timezone('America/Sao_Paulo')
+    timestamp = datetime.now(brasilia_tz).strftime("%Y-%m-%d %H:%M:%S")
+    # --- FIM MODIFICAÇÃO ---
     
     row_data = [new_id, notification_type, message, timestamp, 'Não']
     sheet.append_row(row_data)
@@ -144,7 +148,14 @@ def get_all_notifications_for_frontend():
         }
         processed_notifications.append(processed_notif)
     
+    # Ordena as notificações pelas mais recentes primeiro
+    processed_notifications.sort(key=lambda x: datetime.strptime(x['Data'], "%Y-%m-%d %H:%M:%S"), reverse=True)
+
     print(f"Total de notificações (lidas e não lidas) encontradas para o frontend: {len(processed_notifications)}")
+    # --- NOVO LOG: Imprime o status 'Lida' de algumas notificações para depuração ---
+    for i, notif in enumerate(processed_notifications[:5]): # Imprime as 5 primeiras
+        print(f"  Notificação {notif['ID']} - Tipo: {notif['Tipo']}, Lida: '{notif['Lida']}'")
+    # --- FIM NOVO LOG ---
     return processed_notifications
 
 def mark_notification_as_read(notification_id):
@@ -175,7 +186,7 @@ def mark_notification_as_read(notification_id):
 
         # Atualiza a célula na planilha
         sheet.update_cell(found_row_index, lida_col_index + 1, 'Sim') # +1 para converter index 0-based para 1-based
-        print(f"Notificação {notification_id} marcada como lida na planilha.")
+        print(f"Notificação {notification_id} marcada como lida na planilha. Linha: {found_row_index}, Coluna Lida: {lida_col_index + 1}")
         return {"success": True, "message": f"Notificação {notification_id} marcada como lida."}
     except ValueError:
         print("ERRO: Colunas 'ID' ou 'Lida' não encontradas na planilha de Notificações.")
@@ -195,6 +206,9 @@ def get_all_game_data():
         profile_sheet = _get_sheet('Perfil'); profile_records = _get_data_from_sheet(profile_sheet) if profile_sheet else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
         achievements_sheet = _get_sheet('Conquistas'); all_achievements = _get_data_from_sheet(achievements_sheet) if achievements_sheet else []
+        
+        # Pega todas as notificações existentes para evitar duplicatas
+        existing_notifications = get_all_notifications_for_frontend()
 
         def sort_key(game):
             try: nota = float(str(game.get('Nota', '-1')).replace(',', '.'))
@@ -228,6 +242,49 @@ def get_all_game_data():
         completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         final_stats = {**base_stats, **gamer_stats}
+
+        # --- MODIFICAÇÃO: Lógica para notificar conquistas do aplicativo ---
+        for ach in completed_achievements:
+            notification_message = f"Você desbloqueou a conquista: '{ach.get('Nome')}'!"
+            # Verifica se já existe uma notificação para esta conquista específica
+            if not any(n.get('Tipo') == "Conquista Desbloqueada" and n.get('Mensagem') == notification_message for n in existing_notifications):
+                _add_notification("Conquista Desbloqueada", notification_message)
+        # --- FIM MODIFICAÇÃO ---
+
+        # --- NOVO: Lógica para notificar lançamentos próximos da lista de desejos ---
+        brasilia_tz = pytz.timezone('America/Sao_Paulo')
+        today = datetime.now(brasilia_tz).replace(hour=0, minute=0, second=0, microsecond=0) # Data de hoje em Brasília, sem hora
+        for wish in all_wishlist_data:
+            release_date_str = wish.get('Data Lançamento')
+            if release_date_str:
+                try:
+                    # Tenta diferentes formatos de data
+                    if '/' in release_date_str: # dd/mm/yyyy
+                        release_date = datetime.strptime(release_date_str, "%d/%m/%Y")
+                    elif '-' in release_date_str: # yyyy-mm-dd (formato comum de APIs)
+                        release_date = datetime.strptime(release_date_str, "%Y-%m-%d")
+                    else:
+                        continue # Ignora datas em formato desconhecido
+
+                    # Remove a parte da hora da data de lançamento para comparação justa
+                    release_date = release_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                    time_to_release = release_date - today
+                    
+                    # Notifica se faltam 7 dias ou menos e a data ainda não passou
+                    if timedelta(days=0) <= time_to_release <= timedelta(days=7):
+                        notification_message = f"O jogo '{wish.get('Nome')}' será lançado em {time_to_release.days} dias!"
+                        if time_to_release.days == 0:
+                            notification_message = f"O jogo '{wish.get('Nome')}' foi lançado hoje!"
+                        
+                        # Evita notificações duplicadas para o mesmo jogo e tipo
+                        if not any(n.get('Tipo') == "Lançamento Próximo" and n.get('Mensagem') == notification_message for n in existing_notifications):
+                            _add_notification("Lançamento Próximo", notification_message)
+                except ValueError:
+                    print(f"AVISO: Data de lançamento inválida para '{wish.get('Nome')}': {release_date_str}")
+                except Exception as e:
+                    print(f"ERRO ao processar data de lançamento para '{wish.get('Nome')}': {e}")
+        # --- FIM NOVO ---
 
         return {
             'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
@@ -427,12 +484,12 @@ def update_game_in_sheet(game_name, updated_data):
         if old_game_dict.get('Status') not in ['Finalizado', 'Platinado'] and updated_data.get('Status') == 'Finalizado':
             _add_notification("Jogo Finalizado", f"Você finalizou '{updated_data.get('Nome', game_name)}'!")
 
-        # Verifica se o número de conquistas aumentou
-        old_conquistas = int(old_game_dict.get('Conquistas Obtidas', 0))
-        new_conquistas = int(updated_data.get('Conquistas Obtidas', 0))
-        if new_conquistas > old_conquistas:
-            _add_notification("Conquistas Desbloqueadas", f"Você desbloqueou {new_conquistas - old_conquistas} novas conquistas em '{updated_data.get('Nome', game_name)}'!")
-        # --- FIM NOVO ---
+        # --- REMOVIDO: Notificação de 'Conquistas Desbloqueadas' daqui, será tratada em get_all_game_data ---
+        # old_conquistas = int(old_game_dict.get('Conquistas Obtidas', 0))
+        # new_conquistas = int(updated_data.get('Conquistas Obtidas', 0))
+        # if new_conquistas > old_conquistas:
+        #     _add_notification("Conquistas Desbloqueadas", f"Você desbloqueou {new_conquistas - old_conquistas} novas conquistas em '{updated_data.get('Nome', game_name)}'!")
+        # --- FIM REMOVIDO ---
 
         return {"success": True, "message": "Jogo atualizado com sucesso."}
     except Exception as e:
