@@ -8,6 +8,4 @@ werkzeug
 pandas
 requests
 deepl
-pytz
-fuzzywuzzy
-python-Levenshtein # Para performance otimizada com fuzzywuzzy
+pytz # Adicionado para manipulação de fuso horário
