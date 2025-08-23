@@ -166,13 +166,14 @@ def delete_item(list_type, item_name):
     except Exception as e:
         return jsonify({"success": False, "message": "Erro ao deletar item.", "detalhes_tecnicos": str(e)}), 500
 
-# --- NOVO: Rotas para Notificações ---
+# --- Rotas para Notificações ---
 @game_bp.route('/notifications', methods=['GET'])
 @jwt_required()
 def get_notifications():
-    """Retorna todas as notificações não lidas para o usuário."""
+    """Retorna todas as notificações (lidas e não lidas) para o usuário."""
     try:
-        notifications = game_service.get_unread_notifications()
+        # MODIFICAÇÃO AQUI: Chamar a nova função que retorna TODAS as notificações
+        notifications = game_service.get_all_notifications_for_frontend()
         return jsonify(notifications)
     except Exception as e:
         print(f"!!! ERRO AO BUSCAR NOTIFICAÇÕES: {e}")
