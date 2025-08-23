@@ -11,7 +11,7 @@ GENRE_TRANSLATIONS = {
     "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
     "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
-    "Arcade": "Arcade", "Platformer": "Plataforma", "Racing": "Corrida",
+    "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
     "Massively Multiplayer": "MMO", "Sports": "Esportes", "Fighting": "Luta",
     "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
     "Card": "Cartas"
@@ -165,3 +165,29 @@ def delete_item(list_type, item_name):
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "message": "Erro ao deletar item.", "detalhes_tecnicos": str(e)}), 500
+
+# --- NOVO: Rotas para Notificações ---
+@game_bp.route('/notifications', methods=['GET'])
+@jwt_required()
+def get_notifications():
+    """Retorna todas as notificações não lidas para o usuário."""
+    try:
+        notifications = game_service.get_unread_notifications()
+        return jsonify(notifications)
+    except Exception as e:
+        print(f"!!! ERRO AO BUSCAR NOTIFICAÇÕES: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Não foi possível buscar as notificações.", "detalhes_tecnicos": str(e)}), 500
+
+@game_bp.route('/notifications/mark-read/<int:notification_id>', methods=['POST'])
+@jwt_required()
+def mark_notification_read(notification_id):
+    """Marca uma notificação específica como lida."""
+    try:
+        result = game_service.mark_notification_as_read(notification_id)
+        return jsonify(result)
+    except Exception as e:
+        print(f"!!! ERRO AO MARCAR NOTIFICAÇÃO COMO LIDA: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Erro ao marcar notificação como lida.", "detalhes_tecnicos": str(e)}), 500
+# --- FIM DAS NOVAS ROTAS ---
