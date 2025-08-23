@@ -388,7 +388,7 @@ def get_all_game_data():
             'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': all_wishlist_data, # Retorna all_wishlist_data sem filtrar
             'perfil': profile_data,
             'conquistas_concluidas': completed_achievements,
-            'conquistas_pendentes': pending_achievements
+            'conquistas_pendentes': pending_achquievements
         }
     except Exception as e:
         print(f"Erro ao buscar dados: {e}"); traceback.print_exc()
