@@ -95,7 +95,7 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
         if nivel >= level_req: rank_gamer = rank_name
     return {'nivel_gamer': nivel, 'rank_gamer': rank_gamer, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
 
-# --- NOVO: Funções para gerenciar notificações ---
+# --- Funções para gerenciar notificações ---
 def _get_notifications_sheet():
     """Retorna a aba de notificações."""
     return _get_sheet('Notificações')
@@ -104,51 +104,87 @@ def _add_notification(notification_type, message):
     """Adiciona uma nova notificação à planilha, evitando duplicatas recentes."""
     sheet = _get_notifications_sheet()
     if not sheet:
+        print("ERRO: Conexão com a planilha de notificações falhou ao tentar adicionar notificação.")
         return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
 
-    # Verifica se a notificação já existe para evitar duplicatas
     notifications = _get_data_from_sheet(sheet)
     for notif in notifications:
         # Considera uma notificação duplicada se for do mesmo tipo e mensagem, e não lida
         if notif.get('Tipo') == notification_type and \
            notif.get('Mensagem') == message and \
-           notif.get('Lida', 'Não') == 'Não':
+           str(notif.get('Lida', 'Não')) == 'Não': # Garante comparação como string
+            print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message}'")
             return {"success": False, "message": "Notificação duplicada evitada."}
 
-    # Gera um ID simples baseado na contagem de linhas (pode ser melhorado para UUID em produção)
     new_id = len(notifications) + 1
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     row_data = [new_id, notification_type, message, timestamp, 'Não']
     sheet.append_row(row_data)
+    print(f"Notificação adicionada: ID={new_id}, Tipo='{notification_type}', Mensagem='{message}'")
     return {"success": True, "message": "Notificação adicionada com sucesso."}
 
-def get_unread_notifications():
-    """Retorna todas as notificações não lidas."""
+def get_all_notifications_for_frontend():
+    """Retorna TODAS as notificações (lidas e não lidas) para o frontend."""
     sheet = _get_notifications_sheet()
     if not sheet:
+        print("ERRO: Conexão com a planilha de notificações falhou ao tentar buscar todas as notificações.")
         return []
     notifications = _get_data_from_sheet(sheet)
-    return [n for n in notifications if n.get('Lida', 'Não') == 'Não']
+    
+    # Processa as notificações para garantir tipos corretos para o frontend
+    processed_notifications = []
+    for notif in notifications:
+        processed_notif = {
+            'ID': int(notif.get('ID', 0)), # Garante que ID seja int
+            'Tipo': notif.get('Tipo', ''),
+            'Mensagem': notif.get('Mensagem', ''),
+            'Data': notif.get('Data', ''),
+            'Lida': str(notif.get('Lida', 'Não')) # Garante que Lida seja string 'Sim' ou 'Não'
+        }
+        processed_notifications.append(processed_notif)
+    
+    print(f"Total de notificações (lidas e não lidas) encontradas para o frontend: {len(processed_notifications)}")
+    return processed_notifications
 
 def mark_notification_as_read(notification_id):
     """Marca uma notificação específica como lida."""
     sheet = _get_notifications_sheet()
     if not sheet:
+        print("ERRO: Conexão com a planilha de notificações falhou ao tentar marcar como lida.")
         return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
     
     try:
-        # Encontra a célula com o ID da notificação
-        cell = sheet.find(str(notification_id), in_column=1) # Procura na primeira coluna (ID)
-        sheet.update_cell(cell.row, sheet.find('Lida').col, 'Sim') # Atualiza a coluna 'Lida'
+        # Busca todas as linhas para encontrar a notificação pelo ID
+        all_records = sheet.get_all_values()
+        headers = all_records[0]
+        data_rows = all_records[1:]
+
+        id_col_index = headers.index('ID')
+        lida_col_index = headers.index('Lida')
+
+        found_row_index = -1
+        for i, row in enumerate(data_rows):
+            if str(row[id_col_index]) == str(notification_id):
+                found_row_index = i + 2 # +2 porque headers é linha 1 e data_rows começa do 0
+                break
+        
+        if found_row_index == -1:
+            print(f"ERRO: Notificação com ID {notification_id} não encontrada na planilha.")
+            return {"success": False, "message": "Notificação não encontrada."}
+
+        # Atualiza a célula na planilha
+        sheet.update_cell(found_row_index, lida_col_index + 1, 'Sim') # +1 para converter index 0-based para 1-based
+        print(f"Notificação {notification_id} marcada como lida na planilha.")
         return {"success": True, "message": f"Notificação {notification_id} marcada como lida."}
-    except gspread.exceptions.CellNotFound:
-        return {"success": False, "message": "Notificação não encontrada."}
+    except ValueError:
+        print("ERRO: Colunas 'ID' ou 'Lida' não encontradas na planilha de Notificações.")
+        return {"success": False, "message": "Erro: Colunas necessárias não encontradas."}
     except Exception as e:
-        print(f"Erro ao marcar notificação como lida: {e}"); traceback.print_exc()
+        print(f"ERRO ao marcar notificação {notification_id} como lida: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao atualizar notificação."}
 
-# --- FIM DAS NOVAS FUNÇÕES ---
+# --- FIM DAS Funções de Notificação ---
 
 def get_all_game_data():
     try:
@@ -427,7 +463,7 @@ def update_wish_in_sheet(wish_name, updated_data):
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
         row_values = sheet.row_values(1)
-        column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3}
+        column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Status': 3, 'Preço': 4} # Adicionado 'Status'
         new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
