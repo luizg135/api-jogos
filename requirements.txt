@@ -9,3 +9,7 @@ pandas
 requests
 deepl
 pytz # Adicionado para manipulação de fuso horário
+beautifulsoup4
+openpyxl
+fuzzywuzzy[speedup] # fuzzywuzzy com otimização
+python-levenshtein # Para a otimização do fuzzywuzzy
