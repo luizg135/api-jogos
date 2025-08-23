@@ -9,7 +9,7 @@ import traceback
 import requests
 import deepl
 import pytz
-from fuzzywuzzy import process # Importar fuzzywuzzy
+from fuzzywuzzy import process
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
@@ -260,10 +260,11 @@ def _get_price_data_from_catalog(game_title):
         
         if matched_item:
             # Formata os preços para garantir 2 casas decimais e substitui ',' por '.' para float
-            ps_current = str(matched_item.get('PS Preço Atual', '0,00')).replace('R$', '').replace(',', '.')
-            ps_lowest = str(matched_item.get('PS Menor Preço Histórico', '0,00')).replace('R$', '').replace(',', '.')
-            steam_current = str(matched_item.get('Steam Preço Atual', '0,00')).replace('R$', '').replace(',', '.')
-            steam_lowest = str(matched_item.get('Steam Menor Preço Histórico', '0,00')).replace('R$', '').replace(',', '.')
+            # Garante que o valor seja tratado como string antes de replace, e que seja um float no final
+            ps_current = str(matched_item.get('PS Preço Atual', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
+            ps_lowest = str(matched_item.get('PS Menor Preço Histórico', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
+            steam_current = str(matched_item.get('Steam Preço Atual', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
+            steam_lowest = str(matched_item.get('Steam Menor Preço Histórico', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
 
             return {
                 'PS Preço Atual': float(ps_current) if ps_current else 0.0,
@@ -342,6 +343,7 @@ def get_all_game_data():
             if release_date_str:
                 try:
                     release_date = None
+                    # Tenta diferentes formatos de data
                     if '/' in release_date_str: # dd/mm/yyyy
                         release_date = datetime.strptime(release_date_str, "%d/%m/%Y")
                     elif '-' in release_date_str: # yyyy-mm-dd (formato comum de APIs)
@@ -381,7 +383,8 @@ def get_all_game_data():
         # --- FIM NOVO ---
 
         return {
-            'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
+            'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': all_wishlist_data, # Retorna all_wishlist_data sem filtrar
+            'perfil': profile_data,
             'conquistas_concluidas': completed_achievements,
             'conquistas_pendentes': pending_achievements
         }
@@ -514,11 +517,9 @@ def add_wish_to_sheet(wish_data):
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         
-        # --- NOVO: Buscar dados de preço do catálogo ao adicionar item à wishlist ---
         price_data = _get_price_data_from_catalog(wish_data.get('Nome', ''))
         if price_data:
             wish_data.update(price_data)
-        # --- FIM NOVO ---
 
         headers = sheet.row_values(1)
         row_data = [wish_data.get(header, '') for header in headers]
@@ -593,16 +594,20 @@ def update_wish_in_sheet(wish_name, updated_data):
     try:
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        cell = sheet.find(wish_name)
-        if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
         
+        # --- CORREÇÃO AQUI: Encontrar a célula pelo nome original do item ---
+        try:
+            cell = sheet.find(wish_name) # Busca pelo nome original do item
+        except gspread.exceptions.CellNotFound:
+            return {"success": False, "message": f"Item de desejo '{wish_name}' não encontrado para atualização."}
+        # --- FIM CORREÇÃO ---
+
         # --- NOVO: Buscar dados de preço do catálogo ao atualizar item da wishlist ---
         price_data = _get_price_data_from_catalog(updated_data.get('Nome', wish_name))
         if price_data:
             updated_data.update(price_data)
         # --- FIM NOVO ---
 
-        row_values = sheet.row_values(cell.row) # Obter a linha existente
         headers = sheet.row_values(1)
         # --- MODIFICAÇÃO AQUI: Adicionar as novas colunas de preço ao column_map ---
         column_map = {
@@ -611,7 +616,7 @@ def update_wish_in_sheet(wish_name, updated_data):
             'Steam Preço Atual': 6, 'Steam Menor Preço Histórico': 7
         }
         # --- FIM MODIFICAÇÃO ---
-        new_row = list(row_values)
+        new_row = list(sheet.row_values(cell.row)) # Pega os valores atuais da linha para não sobrescrever
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
