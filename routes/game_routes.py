@@ -6,7 +6,7 @@ from services import game_service
 import traceback
 import requests
 from config import Config
-from flask_cors import CORS # Importa a extensão Flask-CORS
+# REMOVA ESTA LINHA: from flask_cors import CORS # Não precisamos mais importar CORS aqui
 
 # Importa a função run_scraper do seu novo serviço.
 # Isso assume que 'price_scraper_service.py' está DENTRO do diretório 'services'.
@@ -14,11 +14,8 @@ from services.price_scraper_service import run_scraper
 
 game_bp = Blueprint('games', __name__)
 
-# Habilita CORS para todas as rotas neste blueprint, especificando a origem.
-# É CRUCIAL que 'https://perfil-gamer.netlify.app' seja a URL EXATA do seu frontend.
-# Se você tiver mais de uma origem, pode ser uma lista: origins=["https://perfil-gamer.netlify.app", "http://localhost:3000"]
-# O parâmetro 'resources' com r"/*" garante que todas as rotas dentro deste blueprint sejam cobertas.
-CORS(game_bp, resources=r"/*", origins=["https://perfil-gamer.netlify.app"]) 
+# REMOVA ESTA LINHA: CORS(game_bp, resources=r"/*", origins=["https://perfil-gamer.netlify.app"]) 
+# A configuração de CORS será feita globalmente no app.py
 
 GENRE_TRANSLATIONS = {
     "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura", 
