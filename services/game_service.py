@@ -9,7 +9,7 @@ import traceback
 import requests
 import deepl
 import pytz
-from fuzzywuzzy import process
+from fuzzywuzzy import process # Importar fuzzywuzzy
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
@@ -259,18 +259,21 @@ def _get_price_data_from_catalog(game_title):
         matched_item = next((item for item in catalog_data if item.get('Título do Jogo') == matched_title), None)
         
         if matched_item:
-            # Formata os preços para garantir 2 casas decimais e substitui ',' por '.' para float
-            # Garante que o valor seja tratado como string antes de replace, e que seja um float no final
-            ps_current = str(matched_item.get('PS Preço Atual', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
-            ps_lowest = str(matched_item.get('PS Menor Preço Histórico', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
-            steam_current = str(matched_item.get('Steam Preço Atual', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
-            steam_lowest = str(matched_item.get('Steam Menor Preço Histórico', '0,00')).replace('R$', '').replace('.', '').replace(',', '.')
+            # Função auxiliar para parsear e limpar strings de preço
+            def parse_price_string(price_str_raw):
+                price_str = str(price_str_raw).replace('R$', '').strip()
+                price_str = price_str.replace('.', '') # Remove thousand separators
+                price_str = price_str.replace(',', '.') # Change decimal comma to decimal point
+                try:
+                    return float(price_str)
+                except ValueError:
+                    return 0.0 # Retorna 0.0 se não conseguir converter
 
             return {
-                'PS Preço Atual': float(ps_current) if ps_current else 0.0,
-                'PS Menor Preço Histórico': float(ps_lowest) if ps_lowest else 0.0,
-                'Steam Preço Atual': float(steam_current) if steam_current else 0.0,
-                'Steam Menor Preço Histórico': float(steam_lowest) if steam_lowest else 0.0,
+                'PS Preço Atual': parse_price_string(matched_item.get('PS Preço Atual', '0,00')),
+                'PS Menor Preço Histórico': parse_price_string(matched_item.get('PS Menor Preço Histórico', '0,00')),
+                'Steam Preço Atual': parse_price_string(matched_item.get('Steam Preço Atual', '0,00')),
+                'Steam Menor Preço Histórico': parse_price_string(matched_item.get('Steam Menor Preço Histórico', '0,00')),
             }
     print(f"Nenhuma correspondência de preço encontrada para '{game_title}' no catálogo.")
     return None
@@ -343,7 +346,6 @@ def get_all_game_data():
             if release_date_str:
                 try:
                     release_date = None
-                    # Tenta diferentes formatos de data
                     if '/' in release_date_str: # dd/mm/yyyy
                         release_date = datetime.strptime(release_date_str, "%d/%m/%Y")
                     elif '-' in release_date_str: # yyyy-mm-dd (formato comum de APIs)
@@ -608,6 +610,7 @@ def update_wish_in_sheet(wish_name, updated_data):
             updated_data.update(price_data)
         # --- FIM NOVO ---
 
+        row_values = sheet.row_values(cell.row) # Obter a linha existente
         headers = sheet.row_values(1)
         # --- MODIFICAÇÃO AQUI: Adicionar as novas colunas de preço ao column_map ---
         column_map = {
@@ -616,7 +619,7 @@ def update_wish_in_sheet(wish_name, updated_data):
             'Steam Preço Atual': 6, 'Steam Menor Preço Histórico': 7
         }
         # --- FIM MODIFICAÇÃO ---
-        new_row = list(sheet.row_values(cell.row)) # Pega os valores atuais da linha para não sobrescrever
+        new_row = list(row_values)
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
