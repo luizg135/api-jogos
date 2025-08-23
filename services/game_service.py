@@ -134,8 +134,11 @@ def _get_notifications_sheet():
     """Retorna o objeto da aba de notificações."""
     return _get_sheet('Notificações')
 
-def _add_notification(notification_type, message):
-    """Adiciona uma nova notificação à planilha, evitando duplicatas recentes."""
+def _add_notification(notification_type, message_to_save, message_for_display=None):
+    """Adiciona uma nova notificação à planilha, evitando duplicatas recentes.
+       message_to_save: A mensagem completa com o marco (para desduplicação).
+       message_for_display: A mensagem sem o marco (para exibição no frontend).
+    """
     sheet = _get_notifications_sheet()
     if not sheet:
         print("ERRO: Conexão com a planilha de notificações falhou ao tentar adicionar notificação.")
@@ -143,11 +146,10 @@ def _add_notification(notification_type, message):
 
     notifications = _get_data_from_sheet('Notificações') # Busca do cache ou da planilha
     for notif in notifications:
-        # Considera uma notificação duplicada se for do mesmo tipo e mensagem
-        # e não foi marcada como lida (ou seja, ainda está ativa ou foi lida mas queremos evitar repetição)
+        # A desduplicação é feita com base na message_to_save
         if notif.get('Tipo') == notification_type and \
-           notif.get('Mensagem') == message:
-            print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message}'")
+           notif.get('Mensagem') == message_to_save: # Compara com a mensagem completa salva
+            print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message_to_save}'")
             return {"success": False, "message": "Notificação duplicada evitada."}
 
     new_id = len(notifications) + 1
@@ -155,10 +157,15 @@ def _add_notification(notification_type, message):
     brasilia_tz = pytz.timezone('America/Sao_Paulo')
     timestamp = datetime.now(brasilia_tz).strftime("%Y-%m-%d %H:%M:%S")
     
-    row_data = [new_id, notification_type, message, timestamp, 'Não']
+    # Salva a mensagem completa (com marco) na planilha para desduplicação
+    # Mas se message_for_display for fornecido, usa-o para o frontend
+    final_message_to_save = message_to_save
+    final_message_for_display = message_for_display if message_for_display is not None else message_to_save
+
+    row_data = [new_id, notification_type, final_message_to_save, timestamp, 'Não']
     sheet.append_row(row_data)
     _invalidate_cache('Notificações') # Invalida o cache de notificações após adicionar
-    print(f"Notificação adicionada: ID={new_id}, Tipo='{notification_type}', Mensagem='{message}'")
+    print(f"Notificação adicionada: ID={new_id}, Tipo='{notification_type}', Mensagem='{final_message_to_save}' (Exibição: '{final_message_for_display}')")
     return {"success": True, "message": "Notificação adicionada com sucesso."}
 
 def get_all_notifications_for_frontend():
@@ -167,10 +174,15 @@ def get_all_notifications_for_frontend():
     
     processed_notifications = []
     for notif in notifications:
+        # Remove o "(Marco: X dias)" da mensagem antes de enviar para o frontend
+        display_message = notif.get('Mensagem', '')
+        if "(Marco:" in display_message:
+            display_message = display_message.split("(Marco:")[0].strip()
+
         processed_notif = {
             'ID': int(notif.get('ID', 0)),
             'Tipo': notif.get('Tipo', ''),
-            'Mensagem': notif.get('Mensagem', ''),
+            'Mensagem': display_message, # Usa a mensagem limpa para exibição
             'Data': notif.get('Data', ''),
             'Lida': str(notif.get('Lida', 'Não'))
         }
@@ -180,7 +192,7 @@ def get_all_notifications_for_frontend():
 
     print(f"Total de notificações (lidas e não lidas) encontradas para o frontend: {len(processed_notifications)}")
     for i, notif in enumerate(processed_notifications[:5]):
-        print(f"  Notificação {notif['ID']} - Tipo: {notif['Tipo']}, Lida: '{notif['Lida']}'")
+        print(f"  Notificação {notif['ID']} - Tipo: {notif['Tipo']}, Lida: '{notif['Lida']}', Mensagem Display: '{notif['Mensagem']}'")
     return processed_notifications
 
 def mark_notification_as_read(notification_id):
@@ -306,20 +318,20 @@ def get_all_game_data():
 
                     for milestone in release_notification_milestones:
                         if days_to_release == milestone:
-                            notification_message = ""
+                            notification_display_message = "" # Mensagem para o frontend
                             if milestone == 0:
-                                notification_message = f"O jogo '{wish.get('Nome')}' foi lançado hoje!"
+                                notification_display_message = f"O jogo '{wish.get('Nome')}' foi lançado hoje!"
                             elif milestone == 1:
-                                notification_message = f"O jogo '{wish.get('Nome')}' será lançado amanhã!"
+                                notification_display_message = f"O jogo '{wish.get('Nome')}' será lançado amanhã!"
                             else:
-                                notification_message = f"O jogo '{wish.get('Nome')}' será lançado em {milestone} dias!"
+                                notification_display_message = f"O jogo '{wish.get('Nome')}' será lançado em {milestone} dias!"
                             
-                            # Adiciona um identificador único à mensagem para cada marco
-                            unique_notification_message = f"{notification_message} (Marco: {milestone} dias)"
+                            # Mensagem completa com o marco para desduplicação no backend
+                            notification_message_with_milestone = f"{notification_display_message} (Marco: {milestone} dias)"
 
-                            if not any(n.get('Tipo') == "Lançamento Próximo" and n.get('Mensagem') == unique_notification_message for n in existing_notifications):
-                                _add_notification("Lançamento Próximo", unique_notification_message)
-                                print(f"Notificação de lançamento gerada para '{wish.get('Nome')}': {unique_notification_message}")
+                            if not any(n.get('Tipo') == "Lançamento Próximo" and n.get('Mensagem') == notification_message_with_milestone for n in existing_notifications):
+                                _add_notification("Lançamento Próximo", notification_message_with_milestone, notification_display_message)
+                                print(f"Notificação de lançamento gerada para '{wish.get('Nome')}': {notification_message_with_milestone}")
                             break # Notifica apenas o marco mais próximo (maior milestone)
                 except ValueError:
                     print(f"AVISO: Erro ao parsear data de lançamento para '{wish.get('Nome')}': {release_date_str}. Ignorando.")
