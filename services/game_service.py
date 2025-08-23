@@ -286,13 +286,17 @@ def get_all_game_data():
             release_date_str = wish.get('Data Lançamento')
             if release_date_str:
                 try:
-                    # Tenta diferentes formatos de data
+                    # --- MODIFICAÇÃO AQUI: Tentar parsear a data no formato DD/MM/YYYY primeiro ---
+                    release_date = None
                     if '/' in release_date_str: # dd/mm/yyyy
                         release_date = datetime.strptime(release_date_str, "%d/%m/%Y")
                     elif '-' in release_date_str: # yyyy-mm-dd (formato comum de APIs)
                         release_date = datetime.strptime(release_date_str, "%Y-%m-%d")
-                    else:
+                    
+                    if not release_date:
+                        print(f"AVISO: Data de lançamento inválida ou formato desconhecido para '{wish.get('Nome')}': {release_date_str}")
                         continue # Ignora datas em formato desconhecido
+                    # --- FIM MODIFICAÇÃO ---
 
                     release_date = release_date.replace(hour=0, minute=0, second=0, microsecond=0)
                     time_to_release = release_date - today
@@ -316,7 +320,7 @@ def get_all_game_data():
                                 print(f"Notificação de lançamento gerada para '{wish.get('Nome')}': {unique_notification_message}")
                             break # Notifica apenas o marco mais próximo (maior milestone)
                 except ValueError:
-                    print(f"AVISO: Data de lançamento inválida para '{wish.get('Nome')}': {release_date_str}")
+                    print(f"AVISO: Erro ao parsear data de lançamento para '{wish.get('Nome')}': {release_date_str}. Ignorando.")
                 except Exception as e:
                     print(f"ERRO ao processar data de lançamento para '{wish.get('Nome')}': {e}")
         # --- FIM NOVO ---
