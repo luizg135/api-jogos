@@ -6,15 +6,17 @@ from services import game_service
 import traceback
 import requests
 from config import Config
+from flask_cors import CORS # Importa a extensão Flask-CORS
 
-# CORREÇÃO AQUI: Importa a função run_scraper do seu novo serviço.
+# Importa a função run_scraper do seu novo serviço.
 # Isso assume que 'price_scraper_service.py' está DENTRO do diretório 'services'.
 from services.price_scraper_service import run_scraper 
 
 game_bp = Blueprint('games', __name__)
+CORS(game_bp) # Habilita CORS para todas as rotas neste blueprint
 
 GENRE_TRANSLATIONS = {
-    "Action": "Ação", "Indie": "Indie", "Aventura": "Adventure", # Corrigido Adventure
+    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura", # Corrigido para "Adventure": "Aventura"
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
     "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
     "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
