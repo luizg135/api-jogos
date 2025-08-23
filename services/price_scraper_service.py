@@ -22,11 +22,12 @@ class PriceTrackerConfig:
     Configurações para o serviço de rastreamento de preços.
     As credenciais e URL da planilha devem ser configuradas como variáveis de ambiente.
     """
-    GOOGLE_SHEETS_CREDENTIALS_JSON = os.environ.get('GSPREAD_SERVICE_ACCOUNT_CREDENTIALS')
+    # CORREÇÃO AQUI: Usando GOOGLE_SHEETS_CREDENTIALS para corresponder ao Render
+    GOOGLE_SHEETS_CREDENTIALS_JSON = os.environ.get('GOOGLE_SHEETS_CREDENTIALS') 
     GOOGLE_SHEET_URL = os.environ.get('GOOGLE_SHEET_URL')
 
     if not GOOGLE_SHEETS_CREDENTIALS_JSON:
-        print("ERRO CRÍTICO (PriceTrackerConfig): 'GSPREAD_SERVICE_ACCOUNT_CREDENTIALS' não configurado!")
+        print("ERRO CRÍTICO (PriceTrackerConfig): 'GOOGLE_SHEETS_CREDENTIALS' não configurado!")
     if not GOOGLE_SHEET_URL:
         print("ERRO CRÍTICO (PriceTrackerConfig): 'GOOGLE_SHEET_URL' não configurado!")
 
@@ -59,7 +60,7 @@ def _get_sheet_for_price_tracker(sheet_name):
     try:
         credentials_json = PriceTrackerConfig.GOOGLE_SHEETS_CREDENTIALS_JSON
         if not credentials_json:
-            print("ERRO CRÍTICO (PriceTracker): Variável de ambiente 'GSPREAD_SERVICE_ACCOUNT_CREDENTIALS' não configurada.")
+            print("ERRO CRÍTICO (PriceTracker): Variável de ambiente 'GOOGLE_SHEETS_CREDENTIALS' não configurada.")
             return None
         
         google_sheet_url = PriceTrackerConfig.GOOGLE_SHEET_URL
@@ -496,11 +497,3 @@ def run_scraper(worksheet_name: str = 'Desejos'):
         print(f"Ocorreu um erro inesperado durante a execução do script: {e}")
         traceback.print_exc()
         return {"status": "error", "message": f"Erro interno ao executar o scraper: {str(e)}"}
-
-if __name__ == "__main__":
-    # Este bloco é para testar o serviço de forma independente
-    # Certifique-se de que as variáveis de ambiente estão definidas para o teste
-    # Ex: export GOOGLE_SHEET_URL="SUA_URL"
-    # Ex: export GSPREAD_SERVICE_ACCOUNT_CREDENTIALS='{"type": "service_account", ...}'
-    result = run_scraper(worksheet_name='Desejos')
-    print(result)
