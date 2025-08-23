@@ -8,15 +8,13 @@ import requests
 from config import Config
 
 # CORREÇÃO AQUI: Importa a função run_scraper do seu novo serviço.
-# Isso assume que 'price_scraper_service.py' está na raiz do seu projeto (ex: /opt/render/project/src/price_scraper_service.py)
-# Se 'price_scraper_service.py' estiver DENTRO do diretório 'routes/', você usaria 'from .price_scraper_service import run_scraper'.
-# Mas para manter a separação e acessibilidade de um módulo de nível superior, esta é a forma mais comum.
-from price_scraper_service import run_scraper 
+# Isso assume que 'price_scraper_service.py' está DENTRO do diretório 'services'.
+from services.price_scraper_service import run_scraper 
 
 game_bp = Blueprint('games', __name__)
 
 GENRE_TRANSLATIONS = {
-    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
+    "Action": "Ação", "Indie": "Indie", "Aventura": "Adventure", # Corrigido Adventure
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
     "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
     "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
