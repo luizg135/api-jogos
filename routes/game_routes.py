@@ -1,9 +1,14 @@
+# main.py (ou o nome do seu arquivo de rotas, como game_bp.py)
+
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity # Adicionado get_jwt_identity
 from services import game_service
 import traceback
 import requests
 from config import Config
+
+# Importa a função run_scraper do seu novo serviço
+from price_scraper_service import run_scraper 
 
 game_bp = Blueprint('games', __name__)
 
@@ -172,7 +177,6 @@ def delete_item(list_type, item_name):
 def get_notifications():
     """Retorna todas as notificações (lidas e não lidas) para o usuário."""
     try:
-        # MODIFICAÇÃO AQUI: Chamar a nova função que retorna TODAS as notificações
         notifications = game_service.get_all_notifications_for_frontend()
         return jsonify(notifications)
     except Exception as e:
@@ -191,4 +195,21 @@ def mark_notification_read(notification_id):
         print(f"!!! ERRO AO MARCAR NOTIFICAÇÃO COMO LIDA: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro ao marcar notificação como lida.", "detalhes_tecnicos": str(e)}), 500
-# --- FIM DAS NOVAS ROTAS ---
+
+# --- NOVO ENDPOINT PARA EXECUTAR O SCRAPER ---
+@game_bp.route('/run-price-scraper', methods=['POST'])
+@jwt_required()
+def run_price_scraper_endpoint():
+    """
+    Endpoint para acionar a execução do serviço de web scraping de preços.
+    """
+    current_user = get_jwt_identity()
+    print(f"DEBUG: Endpoint de scraper acionado pelo usuário: {current_user}")
+    
+    # Chama a função run_scraper do serviço separado
+    result = run_scraper(worksheet_name='Desejos')
+    
+    if result["status"] == "success":
+        return jsonify({"message": result["message"]}), 200
+    else:
+        return jsonify({"message": result["message"]}), 500
