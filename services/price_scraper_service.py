@@ -24,12 +24,13 @@ class PriceTrackerConfig:
     """
     # CORREÇÃO AQUI: Usando GOOGLE_SHEETS_CREDENTIALS para corresponder ao Render
     GOOGLE_SHEETS_CREDENTIALS_JSON = os.environ.get('GOOGLE_SHEETS_CREDENTIALS') 
-    GOOGLE_SHEET_URL = os.environ.get('GOOGLE_SHEET_URL')
+    # CORREÇÃO AQUI: Usando GAME_SHEET_URL para corresponder ao Render
+    GOOGLE_SHEET_URL = os.environ.get('GAME_SHEET_URL')
 
     if not GOOGLE_SHEETS_CREDENTIALS_JSON:
         print("ERRO CRÍTICO (PriceTrackerConfig): 'GOOGLE_SHEETS_CREDENTIALS' não configurado!")
     if not GOOGLE_SHEET_URL:
-        print("ERRO CRÍTICO (PriceTrackerConfig): 'GOOGLE_SHEET_URL' não configurado!")
+        print("ERRO CRÍTICO (PriceTrackerConfig): 'GAME_SHEET_URL' não configurado!")
 
 
 # Cache global para planilhas e dados para evitar leituras repetidas e lentas
@@ -65,7 +66,7 @@ def _get_sheet_for_price_tracker(sheet_name):
         
         google_sheet_url = PriceTrackerConfig.GOOGLE_SHEET_URL
         if not google_sheet_url:
-            print("ERRO CRÍTICO (PriceTracker): Variável de ambiente 'GOOGLE_SHEET_URL' não configurada.")
+            print("ERRO CRÍTICO (PriceTracker): Variável de ambiente 'GAME_SHEET_URL' não configurada.")
             return None
 
         print(f"DEBUG (PriceTracker): URL da planilha Google sendo usada: {google_sheet_url}")
