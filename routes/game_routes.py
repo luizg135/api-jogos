@@ -1,13 +1,16 @@
-# main.py (ou o nome do seu arquivo de rotas, como game_bp.py)
+# game_routes.py (o seu arquivo de rotas)
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity # Adicionado get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import game_service
 import traceback
 import requests
 from config import Config
 
-# Importa a função run_scraper do seu novo serviço
+# CORREÇÃO AQUI: Importa a função run_scraper do seu novo serviço.
+# Isso assume que 'price_scraper_service.py' está na raiz do seu projeto (ex: /opt/render/project/src/price_scraper_service.py)
+# Se 'price_scraper_service.py' estiver DENTRO do diretório 'routes/', você usaria 'from .price_scraper_service import run_scraper'.
+# Mas para manter a separação e acessibilidade de um módulo de nível superior, esta é a forma mais comum.
 from price_scraper_service import run_scraper 
 
 game_bp = Blueprint('games', __name__)
