@@ -127,7 +127,9 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
     rank_gamer = "Bronze"
     for level_req, rank_name in ranks.items():
         if nivel >= level_req: rank_gamer = rank_name
-    return {'nivel_gamer': nivel, 'rank_gamer': rank_name, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
+    # --- CORREÇÃO AQUI: Retornar 'rank_gamer' em vez de 'rank_name' ---
+    return {'nivel_gamer': nivel, 'rank_gamer': rank_gamer, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
+    # --- FIM CORREÇÃO ---
 
 # --- Funções para gerenciar notificações ---
 def _get_notifications_sheet():
@@ -143,9 +145,10 @@ def _add_notification(notification_type, message):
 
     notifications = _get_data_from_sheet('Notificações') # Busca do cache ou da planilha
     for notif in notifications:
+        # Considera uma notificação duplicada se for do mesmo tipo e mensagem
+        # e não foi marcada como lida (ou seja, ainda está ativa ou foi lida mas queremos evitar repetição)
         if notif.get('Tipo') == notification_type and \
-           notif.get('Mensagem') == message and \
-           str(notif.get('Lida', 'Não')) == 'Não':
+           notif.get('Mensagem') == message:
             print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message}'")
             return {"success": False, "message": "Notificação duplicada evitada."}
 
@@ -254,7 +257,7 @@ def get_all_game_data():
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
             'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
             'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
-            'JOGO_MAIS_JOGADO': max(tempos_de_jogo) if tempos_de_jogo else 0,
+            'max_horas_um_jogo': max(tempos_de_jogo) if tempos_de_jogo else 0,
             'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
             'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
