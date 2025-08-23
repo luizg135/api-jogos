@@ -296,9 +296,11 @@ def get_all_game_data():
                     if not release_date:
                         print(f"AVISO: Data de lançamento inválida ou formato desconhecido para '{wish.get('Nome')}': {release_date_str}")
                         continue # Ignora datas em formato desconhecido
-                    # --- FIM MODIFICAÇÃO ---
+                    
+                    # --- NOVO: Atribuir o fuso horário de Brasília à release_date ---
+                    release_date = brasilia_tz.localize(release_date.replace(hour=0, minute=0, second=0, microsecond=0))
+                    # --- FIM NOVO ---
 
-                    release_date = release_date.replace(hour=0, minute=0, second=0, microsecond=0)
                     time_to_release = release_date - today
                     days_to_release = time_to_release.days
 
