@@ -127,9 +127,7 @@ def _calculate_gamer_stats(games_data, unlocked_achievements):
     rank_gamer = "Bronze"
     for level_req, rank_name in ranks.items():
         if nivel >= level_req: rank_gamer = rank_name
-    # --- CORREÇÃO AQUI: Retornar 'rank_gamer' em vez de 'rank_name' ---
     return {'nivel_gamer': nivel, 'rank_gamer': rank_gamer, 'exp_nivel_atual': exp_no_nivel_atual, 'exp_para_proximo_nivel': exp_per_level}
-    # --- FIM CORREÇÃO ---
 
 # --- Funções para gerenciar notificações ---
 def _get_notifications_sheet():
@@ -257,7 +255,7 @@ def get_all_game_data():
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
             'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
             'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
-            'max_horas_um_jogo': max(tempos_de_jogo) if tempos_de_jogo else 0,
+            'JOGO_MAIS_JOGADO': max(tempos_de_jogo) if tempos_de_jogo else 0,
             'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
             'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
@@ -280,6 +278,10 @@ def get_all_game_data():
         # --- NOVO: Lógica para notificar lançamentos próximos da lista de desejos ---
         brasilia_tz = pytz.timezone('America/Sao_Paulo')
         today = datetime.now(brasilia_tz).replace(hour=0, minute=0, second=0, microsecond=0) # Data de hoje em Brasília, sem hora
+        
+        # Definir os marcos de notificação em dias antes do lançamento
+        release_notification_milestones = [30, 15, 7, 3, 1, 0] # 1 mês, 15 dias, 7 dias, 3 dias, 1 dia, Lançamento
+
         for wish in all_wishlist_data:
             release_date_str = wish.get('Data Lançamento')
             if release_date_str:
@@ -292,20 +294,27 @@ def get_all_game_data():
                     else:
                         continue # Ignora datas em formato desconhecido
 
-                    # Remove a parte da hora da data de lançamento para comparação justa
                     release_date = release_date.replace(hour=0, minute=0, second=0, microsecond=0)
-
                     time_to_release = release_date - today
-                    
-                    # Notifica se faltam 7 dias ou menos e a data ainda não passou
-                    if timedelta(days=0) <= time_to_release <= timedelta(days=7):
-                        notification_message = f"O jogo '{wish.get('Nome')}' será lançado em {time_to_release.days} dias!"
-                        if time_to_release.days == 0:
-                            notification_message = f"O jogo '{wish.get('Nome')}' foi lançado hoje!"
-                        
-                        # Evita notificações duplicadas para o mesmo jogo e tipo
-                        if not any(n.get('Tipo') == "Lançamento Próximo" and n.get('Mensagem') == notification_message for n in existing_notifications):
-                            _add_notification("Lançamento Próximo", notification_message)
+                    days_to_release = time_to_release.days
+
+                    for milestone in release_notification_milestones:
+                        if days_to_release == milestone:
+                            notification_message = ""
+                            if milestone == 0:
+                                notification_message = f"O jogo '{wish.get('Nome')}' foi lançado hoje!"
+                            elif milestone == 1:
+                                notification_message = f"O jogo '{wish.get('Nome')}' será lançado amanhã!"
+                            else:
+                                notification_message = f"O jogo '{wish.get('Nome')}' será lançado em {milestone} dias!"
+                            
+                            # Adiciona um identificador único à mensagem para cada marco
+                            unique_notification_message = f"{notification_message} (Marco: {milestone} dias)"
+
+                            if not any(n.get('Tipo') == "Lançamento Próximo" and n.get('Mensagem') == unique_notification_message for n in existing_notifications):
+                                _add_notification("Lançamento Próximo", unique_notification_message)
+                                print(f"Notificação de lançamento gerada para '{wish.get('Nome')}': {unique_notification_message}")
+                            break # Notifica apenas o marco mais próximo (maior milestone)
                 except ValueError:
                     print(f"AVISO: Data de lançamento inválida para '{wish.get('Nome')}': {release_date_str}")
                 except Exception as e:
@@ -346,7 +355,7 @@ def get_public_profile_data():
             'total_jogos_longos': len([t for t in tempos_de_jogo if t >= 50]),
             'total_soulslike_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim' and 'Soulslike' in g.get('Estilo', '')]),
             'total_indie': len([g for g in games_data if 'Indie' in g.get('Estilo', '')]),
-            'max_horas_um_jogo': max(tempos_de_jogo) if tempos_de_jogo else 0,
+            'JOGO_MAIS_JOGADO': max(tempos_de_jogo) if tempos_de_jogo else 0,
             'total_finalizados_acao': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Ação' in g.get('Estilo', '')]),
             'total_finalizados_estrategia': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
             'total_generos_diferentes': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
