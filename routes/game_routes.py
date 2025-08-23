@@ -13,10 +13,15 @@ from flask_cors import CORS # Importa a extensão Flask-CORS
 from services.price_scraper_service import run_scraper 
 
 game_bp = Blueprint('games', __name__)
-CORS(game_bp) # Habilita CORS para todas as rotas neste blueprint
+
+# Habilita CORS para todas as rotas neste blueprint, especificando a origem.
+# É CRUCIAL que 'https://perfil-gamer.netlify.app' seja a URL EXATA do seu frontend.
+# Se você tiver mais de uma origem, pode ser uma lista: origins=["https://perfil-gamer.netlify.app", "http://localhost:3000"]
+# O parâmetro 'resources' com r"/*" garante que todas as rotas dentro deste blueprint sejam cobertas.
+CORS(game_bp, resources=r"/*", origins=["https://perfil-gamer.netlify.app"]) 
 
 GENRE_TRANSLATIONS = {
-    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura", # Corrigido para "Adventure": "Aventura"
+    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura", 
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
     "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
     "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
