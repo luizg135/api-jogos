@@ -1,24 +1,14 @@
-# game_routes.py (o seu arquivo de rotas)
-
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required
 from services import game_service
 import traceback
 import requests
 from config import Config
-# REMOVA ESTA LINHA: from flask_cors import CORS # Não precisamos mais importar CORS aqui
-
-# Importa a função run_scraper do seu novo serviço.
-# Isso assume que 'price_scraper_service.py' está DENTRO do diretório 'services'.
-from services.price_scraper_service import run_scraper 
 
 game_bp = Blueprint('games', __name__)
 
-# REMOVA ESTA LINHA: CORS(game_bp, resources=r"/*", origins=["https://perfil-gamer.netlify.app"]) 
-# A configuração de CORS será feita globalmente no app.py
-
 GENRE_TRANSLATIONS = {
-    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura", 
+    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
     "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
     "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
@@ -182,6 +172,7 @@ def delete_item(list_type, item_name):
 def get_notifications():
     """Retorna todas as notificações (lidas e não lidas) para o usuário."""
     try:
+        # MODIFICAÇÃO AQUI: Chamar a nova função que retorna TODAS as notificações
         notifications = game_service.get_all_notifications_for_frontend()
         return jsonify(notifications)
     except Exception as e:
@@ -200,21 +191,4 @@ def mark_notification_read(notification_id):
         print(f"!!! ERRO AO MARCAR NOTIFICAÇÃO COMO LIDA: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro ao marcar notificação como lida.", "detalhes_tecnicos": str(e)}), 500
-
-# --- NOVO ENDPOINT PARA EXECUTAR O SCRAPER ---
-@game_bp.route('/run-price-scraper', methods=['POST'])
-@jwt_required()
-def run_price_scraper_endpoint():
-    """
-    Endpoint para acionar a execução do serviço de web scraping de preços.
-    """
-    current_user = get_jwt_identity()
-    print(f"DEBUG: Endpoint de scraper acionado pelo usuário: {current_user}")
-    
-    # Chama a função run_scraper do serviço separado
-    result = run_scraper(worksheet_name='Desejos')
-    
-    if result["status"] == "success":
-        return jsonify({"message": result["message"]}), 200
-    else:
-        return jsonify({"message": result["message"]}), 500
+# --- FIM DAS NOVAS ROTAS ---
