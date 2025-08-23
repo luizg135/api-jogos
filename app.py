@@ -14,8 +14,13 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = Config.JWT_SECRET_KEY
 jwt = JWTManager(app)
 
-# Configurações para o CORS (para o frontend funcionar)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# --- MODIFICAÇÃO AQUI: Configurações para o CORS ---
+# Permite requisições de todas as origens para todos os endpoints da API.
+# Em produção, é mais seguro especificar as origens permitidas (ex: origins=["https://perfil-gamer.netlify.app"])
+# No entanto, para fins de desenvolvimento e flexibilidade, '*' é comum.
+# Para o seu caso, vamos especificar a origem do seu frontend para maior segurança.
+CORS(app, resources={r"/api/*": {"origins": "https://perfil-gamer.netlify.app"}})
+# --- FIM DA MODIFICAÇÃO ---
 
 # Registra os blueprints
 app.register_blueprint(auth_bp, url_prefix='/api')
