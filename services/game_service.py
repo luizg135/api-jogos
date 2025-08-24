@@ -750,3 +750,42 @@ def purchase_wish_item_in_sheet(item_name):
     except Exception as e:
         print(f"ERRO: Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
+
+# NOVO: Funções para acionar a GitHub Action de web scraping
+def trigger_wishlist_scraper_action():
+    """Aciona a GitHub Action de web scraping da lista de desejos via API REST."""
+    try:
+        # A URL do workflow deve ser configurada como variável de ambiente
+        github_pat = os.environ.get('GITHUB_PAT')
+        repo_owner = os.environ.get('GITHUB_OWNER')
+        repo_name = os.environ.get('GITHUB_REPO')
+        workflow_file = os.environ.get('GITHUB_WORKFLOW_FILE_NAME')
+
+        if not all([github_pat, repo_owner, repo_name, workflow_file]):
+            print("ERRO: Variáveis de ambiente da GitHub Action não configuradas.")
+            return {"success": False, "message": "Configuração da API do GitHub ausente."}
+
+        url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/actions/workflows/{workflow_file}/dispatches'
+        headers = {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': f'token {github_pat}',
+        }
+        data = {
+            'ref': 'main' # Mude para o nome da sua branch principal se for diferente de 'main'
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        
+        if response.status_code == 204:
+            print("DEBUG: GitHub Action de web scraping acionada com sucesso!")
+            return {"success": True, "message": "Atualização de preços iniciada com sucesso!"}
+        else:
+            print(f"ERRO: Falha ao acionar a GitHub Action. Status: {response.status_code}, Resposta: {response.text}")
+            return {"success": False, "message": f"Erro na API do GitHub: {response.text}"}
+
+    except requests.exceptions.RequestException as e:
+        print(f"ERRO DE CONEXÃO: Falha ao se conectar com a API do GitHub: {e}")
+        return {"success": False, "message": "Erro de conexão. Verifique se a URL está correta."}
+    except Exception as e:
+        print(f"ERRO GENÉRICO: Erro ao acionar a Action: {e}")
+        return {"success": False, "message": "Ocorreu um erro interno ao tentar acionar a action."}
