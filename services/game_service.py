@@ -273,7 +273,28 @@ def get_all_game_data():
 
         wishlist_sheet_data = _get_data_from_sheet('Desejos')
         all_wishlist_data = wishlist_sheet_data if wishlist_sheet_data else []
-        wishlist_data_filtered = [item for item in all_wishlist_data if item.get('Status') != 'Comprado']
+        
+        # Função auxiliar para converter string para float, tratando "Não encontrado" e outros não numéricos
+        def safe_float_conversion(value):
+            try:
+                # Substitui vírgula por ponto para conversão de float e remove "R$"
+                cleaned_value = str(value).replace('R$', '').replace(',', '.').strip()
+                return float(cleaned_value)
+            except (ValueError, TypeError):
+                return 0.0 # Retorna 0.0 se a conversão falhar
+
+        # Processa os dados da wishlist para garantir que os campos de preço sejam numéricos
+        processed_wishlist_data = []
+        for wish in all_wishlist_data:
+            processed_wish = wish.copy()
+            processed_wish['Steam Preco Atual'] = safe_float_conversion(wish.get('Steam Preco Atual'))
+            processed_wish['Steam Menor Preco Historico'] = safe_float_conversion(wish.get('Steam Menor Preco Historico'))
+            processed_wish['PSN Preco Atual'] = safe_float_conversion(wish.get('PSN Preco Atual'))
+            processed_wish['PSN Menor Preco Historico'] = safe_float_conversion(wish.get('PSN Menor Preco Historico'))
+            processed_wish['Preço'] = safe_float_conversion(wish.get('Preço')) # Também para o campo 'Preço' geral
+            processed_wishlist_data.append(processed_wish)
+
+        wishlist_data_filtered = [item for item in processed_wishlist_data if item.get('Status') != 'Comprado']
         print(f"DEBUG: Dados de 'Desejos' carregados. Total: {len(all_wishlist_data)}, Filtrados: {len(wishlist_data_filtered)}")
 
         profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_sheet_data else []
@@ -315,7 +336,7 @@ def get_all_game_data():
             'total_notas_baixas': len([n for n in notas if n <= 30]),
         }
 
-        completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
+        completed_achievements, pending_achievements = _check_achievements(games_data, base_stats, all_achievements, wishlist_data_filtered) # Usar wishlist_data_filtered aqui
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         final_stats = {**base_stats, **gamer_stats}
 
@@ -334,7 +355,7 @@ def get_all_game_data():
         # Definir os marcos de notificação em dias antes do lançamento
         release_notification_milestones = [30, 15, 7, 3, 1, 0] # 1 mês, 15 dias, 7 dias, 3 dias, 1 dia, Lançamento
 
-        for wish in all_wishlist_data:
+        for wish in processed_wishlist_data: # Usar processed_wishlist_data aqui
             release_date_str = wish.get('Data Lançamento')
             if release_date_str:
                 try:
@@ -380,7 +401,7 @@ def get_all_game_data():
         # --- FIM NOVO ---
 
         # NOVO: Lógica para notificar promoções na lista de desejos
-        for wish in all_wishlist_data:
+        for wish in processed_wishlist_data: # Usar processed_wishlist_data aqui
             wish_name = wish.get('Nome', 'Um jogo')
             last_update_str = wish.get('Ultima Atualizacao')
             
@@ -398,10 +419,10 @@ def get_all_game_data():
 
             # Verifica se a atualização foi nas últimas 24 horas
             if (current_time - last_update_datetime).total_seconds() / 3600 <= 24: # Usar current_time aqui
-                steam_current = float(str(wish.get('Steam Preco Atual', '0')).replace(',', '.'))
-                steam_lowest = float(str(wish.get('Steam Menor Preco Historico', '0')).replace(',', '.'))
-                psn_current = float(str(wish.get('PSN Preco Atual', '0')).replace(',', '.'))
-                psn_lowest = float(str(wish.get('PSN Menor Preco Historico', '0')).replace(',', '.'))
+                steam_current = wish['Steam Preco Atual'] # Já é float devido ao processamento anterior
+                steam_lowest = wish['Steam Menor Preco Historico'] # Já é float
+                psn_current = wish['PSN Preco Atual'] # Já é float
+                psn_lowest = wish['PSN Menor Preco Historico'] # Já é float
 
                 # Condição de promoção: preço atual é igual ao menor histórico
                 # Ou está muito próximo (ex: 1% de diferença)
