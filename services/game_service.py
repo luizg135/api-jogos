@@ -339,6 +339,45 @@ def get_all_game_data():
                     print(f"ERRO ao processar data de lançamento para '{wish.get('Nome')}': {e}")
         # --- FIM NOVO ---
 
+        # NOVO: Lógica para notificar promoções na lista de desejos
+        for wish in all_wishlist_data:
+            wish_name = wish.get('Nome', 'Um jogo')
+            last_update_str = wish.get('Ultima Atualizacao')
+            
+            # Converte a string de data/hora para um objeto datetime em Brasília
+            last_update_datetime = None
+            if last_update_str:
+                try:
+                    last_update_datetime = brasilia_tz.localize(datetime.strptime(last_update_str, "%Y-%m-%d %H:%M:%S"))
+                except ValueError:
+                    print(f"AVISO: Não foi possível parsear 'Ultima Atualizacao' para '{wish_name}': {last_update_str}")
+            
+            # Se não houver data de atualização válida, não podemos verificar promoções recentes
+            if not last_update_datetime:
+                continue
+
+            # Verifica se a atualização foi nas últimas 24 horas
+            if (today - last_update_datetime).total_seconds() / 3600 <= 24:
+                steam_current = float(str(wish.get('Steam Preco Atual', '0')).replace(',', '.'))
+                steam_lowest = float(str(wish.get('Steam Menor Preco Historico', '0')).replace(',', '.'))
+                psn_current = float(str(wish.get('PSN Preco Atual', '0')).replace(',', '.'))
+                psn_lowest = float(str(wish.get('PSN Menor Preco Historico', '0')).replace(',', '.'))
+
+                # Condição de promoção: preço atual é igual ao menor histórico
+                # Ou está muito próximo (ex: 1% de diferença)
+                promotion_found = False
+                if steam_current > 0 and (steam_current <= steam_lowest * 1.01): # Margem de 1%
+                    notification_message = f"🔥 Promoção na Steam! '{wish_name}' por R${steam_current:.2f}."
+                    if not any(n.get('Tipo') == "Promoção" and n.get('Mensagem') == notification_message for n in existing_notifications):
+                        _add_notification("Promoção", notification_message)
+                        promotion_found = True
+                
+                if psn_current > 0 and (psn_current <= psn_lowest * 1.01) and not promotion_found: # Evita duas notificações para o mesmo jogo se ambas as plataformas estiverem em promoção
+                    notification_message = f"🔥 Promoção na PSN! '{wish_name}' por R${psn_current:.2f}."
+                    if not any(n.get('Tipo') == "Promoção" and n.get('Mensagem') == notification_message for n in existing_notifications):
+                        _add_notification("Promoção", notification_message)
+            # FIM NOVO
+
         return {
             'estatisticas': final_stats, 'biblioteca': games_data, 'desejos': wishlist_data_filtered, 'perfil': profile_data,
             'conquistas_concluidas': completed_achievements,
@@ -469,14 +508,37 @@ def add_game_to_sheet(game_data):
         return {"success": False, "message": "Erro ao adicionar jogo."}
         
 def add_wish_to_sheet(wish_data):
+    """
+    Adiciona um novo item à lista de desejos.
+    Os campos de preço da plataforma e data de atualização são inicializados vazios
+    ou com zero, pois serão preenchidos por um processo de atualização externo (ou manual).
+    """
     try:
         sheet = _get_sheet('Desejos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        row_data = [
-            wish_data.get('Nome', ''), wish_data.get('Link', ''),
-            wish_data.get('Data Lançamento', ''), wish_data.get('Preço', '')
-        ]
-        sheet.append_row(row_data)
+        
+        # Obter os cabeçalhos da planilha para garantir a ordem correta dos dados
+        headers = sheet.row_values(1)
+        
+        # Preencher os dados da nova linha com os valores fornecidos ou padrões
+        # Certifique-se de que todos os cabeçalhos esperados pela planilha estejam aqui
+        row_data = {
+            'Nome': wish_data.get('Nome', ''),
+            'Link': wish_data.get('Link', ''),
+            'Data Lançamento': wish_data.get('Data Lançamento', ''),
+            'Preço': wish_data.get('Preço', 0), # Preço inicial, pode ser atualizado
+            'Status': wish_data.get('Status', ''), # Pode ser 'Na Fila', 'Comprado', etc.
+            'Steam Preco Atual': wish_data.get('Steam Preco Atual', 0),
+            'Steam Menor Preco Historico': wish_data.get('Steam Menor Preco Historico', 0),
+            'PSN Preco Atual': wish_data.get('PSN Preco Atual', 0),
+            'PSN Menor Preco Historico': wish_data.get('PSN Menor Preco Historico', 0),
+            'Ultima Atualizacao': wish_data.get('Ultima Atualizacao', '') # Data de atualização inicial
+        }
+
+        # Criar a lista de valores na ordem dos cabeçalhos da planilha
+        ordered_row_values = [row_data.get(header, '') for header in headers]
+
+        sheet.append_row(ordered_row_values)
         _invalidate_cache('Desejos') # Invalida o cache de desejos
         _add_notification("Novo Desejo Adicionado", f"Você adicionou '{wish_data.get('Nome', 'Um novo jogo')}' à sua lista de desejos!")
 
@@ -497,19 +559,28 @@ def update_game_in_sheet(game_name, updated_data):
         old_game_dict = dict(zip(headers, old_game_data))
 
         row_values = sheet.row_values(cell.row)
+        # Atualiza o column_map para incluir todas as colunas existentes na sua planilha
         column_map = {
             'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
             'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
             'Estilo': 8, 'Link': 9, 'Adquirido em': 10, 'Início em': 11,
-            'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14
+            'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14,
+            'RAWG_ID': 15, 'Descricao': 16, 'Metacritic': 17, 'Screenshots': 18
         }
         new_row = list(row_values)
+        
+        # Garante que a new_row tenha tamanho suficiente para todas as colunas
+        while len(new_row) < len(headers):
+            new_row.append('') # Adiciona strings vazias para colunas ausentes
+
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
-                while len(new_row) <= col_index: new_row.append('')
-                if key in ['Nota', 'Preço'] and value is not None:
-                    new_row[col_index] = float(value)
+                # Converte para float apenas se for uma coluna de valor numérico formatado
+                if key in ['Nota', 'Preço']:
+                    new_row[col_index] = float(value) if value is not None and value != '' else ''
+                elif key == 'Tempo de Jogo' or key == 'Conquistas Obtidas':
+                    new_row[col_index] = int(value) if value is not None and value != '' else 0
                 else:
                     new_row[col_index] = value
 
@@ -548,16 +619,29 @@ def update_wish_in_sheet(wish_name, updated_data):
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         cell = sheet.find(wish_name)
         if not cell: return {"success": False, "message": "Item de desejo não encontrado."}
+        
         row_values = sheet.row_values(cell.row) # Obter a linha existente
         headers = sheet.row_values(1)
-        column_map = {'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Status': 3, 'Preço': 4}
+        
+        # Atualiza o column_map para incluir todas as colunas existentes na sua planilha de Desejos
+        column_map = {
+            'Nome': 0, 'Link': 1, 'Data Lançamento': 2, 'Preço': 3, 'Status': 4,
+            'Steam Preco Atual': 5, 'Steam Menor Preco Historico': 6,
+            'PSN Preco Atual': 7, 'PSN Menor Preco Historico': 8,
+            'Ultima Atualizacao': 9
+        }
         new_row = list(row_values)
+
+        # Garante que a new_row tenha tamanho suficiente para todas as colunas
+        while len(new_row) < len(headers):
+            new_row.append('') # Adiciona strings vazias para colunas ausentes
+
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
-                while len(new_row) <= col_index: new_row.append('')
-                if key == 'Preço' and value is not None:
-                    new_row[col_index] = float(value)
+                # Converte para float apenas se for uma coluna de valor numérico formatado
+                if key in ['Preço', 'Steam Preco Atual', 'Steam Menor Preco Historico', 'PSN Preco Atual', 'PSN Menor Preco Historico']:
+                    new_row[col_index] = float(value) if value is not None and value != '' else ''
                 else:
                     new_row[col_index] = value
 
