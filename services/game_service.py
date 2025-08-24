@@ -9,6 +9,7 @@ import traceback
 import requests
 import deepl
 import pytz
+import os
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
