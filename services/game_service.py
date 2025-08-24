@@ -71,7 +71,7 @@ def _invalidate_cache(sheet_name):
     """Invalida o cache para uma planilha específica."""
     if sheet_name in _data_cache:
         del _data_cache[sheet_name]
-        print(f"DEBUG: Cache para a planilha '{sheet_name}' invalidado.")
+    print(f"DEBUG: Cache para a planilha '{sheet_name}' invalidado.")
 
 def _check_achievements(games_data, stats, all_achievements, wishlist_data):
     completed = []
@@ -93,7 +93,7 @@ def _check_achievements(games_data, stats, all_achievements, wishlist_data):
         'FINALIZADOS_ESTRATEGIA': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado'] and 'Estratégia' in g.get('Estilo', '')]),
         'GENEROS_DIFERENTES': len(set(g for game in games_data if game.get('Estilo') for g in game.get('Estilo').split(','))),
         'NOTAS_10': len([n for n in [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')] if n == 100]),
-        'NOTAS_BAIXAS': len([n for n in [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')] if n <= 30]),
+        'NOTAS_BAIXAS': len([n for n in [float(str(g.get('Nota', 0)).replace(',', '.') ) for g in games_data if g.get('Nota')] if n <= 30]),
     }
     
     for ach in all_achievements:
@@ -142,9 +142,9 @@ def _get_notifications_sheet():
 
 def _add_notification(notification_type, message_to_save, message_for_display=None, game_name=None):
     """Adiciona uma nova notificação à planilha, evitando duplicatas recentes ou re-notificando promoções após um período.
-       message_to_save: A mensagem completa com o marco (para desduplicação).
-       message_for_display: A mensagem sem o marco (para exibição no frontend).
-       game_name: O nome do jogo, usado para desduplicação de promoções.
+        message_to_save: A mensagem completa com o marco (para desduplicação).
+        message_for_display: A mensagem sem o marco (para exibição no frontend).
+        game_name: O nome do jogo, usado para desduplicação de promoções.
     """
     sheet = _get_notifications_sheet()
     if not sheet:
@@ -606,7 +606,7 @@ def add_wish_to_sheet(wish_data):
     except Exception as e:
         print(f"ERRO: Erro ao adicionar item de desejo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao adicionar item de desejo."}
-    
+        
 def update_game_in_sheet(game_name, updated_data):
     try:
         sheet = _get_sheet('Jogos')
@@ -614,12 +614,15 @@ def update_game_in_sheet(game_name, updated_data):
         try: cell = sheet.find(game_name)
         except gspread.exceptions.CellNotFound: return {"success": False, "message": "Jogo não encontrado."}
         
-        old_game_data = sheet.row_values(cell.row)
-        headers = sheet.row_values(1)
-        old_game_dict = dict(zip(headers, old_game_data))
-
+        # Get existing row data and headers
         row_values = sheet.row_values(cell.row)
-        # Atualiza o column_map para incluir todas as colunas existentes na sua planilha
+        headers = sheet.row_values(1)
+        
+        # Create a dictionary from existing data for easier merging
+        existing_game_dict = dict(zip(headers, row_values))
+
+        # Define column map for easier access to indices
+        # Mantenho o seu column_map original que já é bem completo
         column_map = {
             'Nome': 0, 'Plataforma': 1, 'Status': 2, 'Nota': 3, 'Preço': 4,
             'Tempo de Jogo': 5, 'Conquistas Obtidas': 6, 'Platinado?': 7,
@@ -627,17 +630,37 @@ def update_game_in_sheet(game_name, updated_data):
             'Terminado em': 12, 'Conclusão': 13, 'Abandonado?': 14,
             'RAWG_ID': 15, 'Descricao': 16, 'Metacritic': 17, 'Screenshots': 18
         }
+        
+        # Initialize new_row with existing values to preserve untouched data
         new_row = list(row_values)
         
-        # Garante que a new_row tenha tamanho suficiente para todas as colunas
+        # Ensure new_row has enough elements to match headers, padding with empty strings
         while len(new_row) < len(headers):
-            new_row.append('') # Adiciona strings vazias para colunas ausentes
+            new_row.append('')
 
+        # Iterate through updated_data to apply changes
         for key, value in updated_data.items():
             if key in column_map:
                 col_index = column_map[key]
-                # Converte para float apenas se for uma coluna de valor numérico formatado
-                if key in ['Nota', 'Preço']:
+                
+                # Special handling for 'Descricao' and 'Metacritic':
+                # If the incoming value for these specific fields is empty/None,
+                # we want to retain the existing value from existing_game_dict,
+                # UNLESS the existing value was also empty (meaning no prior data).
+                if key in ['Descricao', 'Metacritic']:
+                    if value is None or value == '':
+                        # If the incoming value is empty, keep the existing one if it's not empty
+                        if existing_game_dict.get(key, '') != '':
+                            new_row[col_index] = existing_game_dict[key]
+                        else:
+                            # If both incoming and existing are empty, then it's genuinely empty
+                            new_row[col_index] = ''
+                    else:
+                        # If a new value is provided, use it
+                        new_row[col_index] = value
+                
+                # Existing type conversion logic for other fields
+                elif key in ['Nota', 'Preço']:
                     new_row[col_index] = float(value) if value is not None and value != '' else ''
                 elif key == 'Tempo de Jogo' or key == 'Conquistas Obtidas':
                     new_row[col_index] = int(value) if value is not None and value != '' else 0
@@ -647,10 +670,10 @@ def update_game_in_sheet(game_name, updated_data):
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache('Jogos') # Invalida o cache de jogos
         
-        if old_game_dict.get('Platinado?', 'Não') == 'Não' and updated_data.get('Platinado?') == 'Sim':
+        if existing_game_dict.get('Platinado?', 'Não') == 'Não' and updated_data.get('Platinado?') == 'Sim':
             _add_notification("Jogo Platinado", f"Parabéns! Você platinou '{updated_data.get('Nome', game_name)}'!")
         
-        if old_game_dict.get('Status') not in ['Finalizado', 'Platinado'] and updated_data.get('Status') == 'Finalizado':
+        if existing_game_dict.get('Status') not in ['Finalizado', 'Platinado'] and updated_data.get('Status') == 'Finalizado':
             _add_notification("Jogo Finalizado", f"Você finalizou '{updated_data.get('Nome', game_name)}'!")
 
         return {"success": True, "message": "Jogo atualizado com sucesso."}
@@ -672,7 +695,7 @@ def delete_game_from_sheet(game_name):
     except Exception as e:
         print(f"ERRO: Erro ao deletar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao deletar jogo."}
-    
+        
 def update_wish_in_sheet(wish_name, updated_data):
     try:
         sheet = _get_sheet('Desejos')
