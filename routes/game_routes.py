@@ -192,3 +192,19 @@ def mark_notification_read(notification_id):
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro ao marcar notificação como lida.", "detalhes_tecnicos": str(e)}), 500
 # --- FIM DAS NOVAS ROTAS ---
+
+# Adicione esta nova rota no final do arquivo
+@game_bp.route('/wishlist/update-prices', methods=['POST'])
+@jwt_required()
+def update_wishlist_prices():
+    """Aciona a GitHub Action para atualizar os preços da lista de desejos."""
+    try:
+        result = game_service.trigger_wishlist_scraper_action()
+        if result["success"]:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 500
+    except Exception as e:
+        print(f"ERRO NA ROTA /wishlist/update-prices: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Erro no servidor ao tentar atualizar os preços."}), 500
