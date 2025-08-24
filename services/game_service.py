@@ -390,12 +390,12 @@ def get_all_game_data():
                 # Ou está muito próximo (ex: 1% de diferença)
                 promotion_found = False
                 if steam_current > 0 and (steam_current <= steam_lowest * 1.01): # Margem de 1%
-                    notification_message = f"🔥 Promoção na Steam! '{wish_name}' por R${steam_current:.2f}."
+                    notification_message = f"Promoção na Steam! '{wish_name}' por R${steam_current:,2f}."
                     _add_notification("Promoção", notification_message, game_name=wish_name) # Passa game_name
                     promotion_found = True
                 
                 if psn_current > 0 and (psn_current <= psn_lowest * 1.01) and not promotion_found: # Evita duas notificações para o mesmo jogo se ambas as plataformas estiverem em promoção
-                    notification_message = f"🔥 Promoção na PSN! '{wish_name}' por R${psn_current:.2f}."
+                    notification_message = f"Promoção na PSN! '{wish_name}' por R${psn_current:,2f}."
                     _add_notification("Promoção", notification_message, game_name=wish_name) # Passa game_name
             # FIM NOVO
 
