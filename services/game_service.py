@@ -264,6 +264,10 @@ def mark_notification_as_read(notification_id):
 def get_all_game_data():
     try:
         print("DEBUG: Iniciando get_all_game_data.")
+        # Define current_time aqui para ser usado na lógica de promoções
+        brasilia_tz = pytz.timezone('America/Sao_Paulo')
+        current_time = datetime.now(brasilia_tz)
+
         game_sheet_data = _get_data_from_sheet('Jogos'); games_data = game_sheet_data if game_sheet_data else []
         print(f"DEBUG: Dados de 'Jogos' carregados. Total: {len(games_data)}")
 
@@ -324,8 +328,8 @@ def get_all_game_data():
         # --- FIM MODIFICAÇÃO ---
 
         # --- NOVO: Lógica para notificar lançamentos próximos da lista de desejos ---
-        brasilia_tz = pytz.timezone('America/Sao_Paulo')
-        today = datetime.now(brasilia_tz).replace(hour=0, minute=0, second=0, microsecond=0) # Data de hoje em Brasília, sem hora
+        # brasilia_tz já está definida no escopo desta função
+        today = current_time.replace(hour=0, minute=0, second=0, microsecond=0) # Data de hoje em Brasília, sem hora
         
         # Definir os marcos de notificação em dias antes do lançamento
         release_notification_milestones = [30, 15, 7, 3, 1, 0] # 1 mês, 15 dias, 7 dias, 3 dias, 1 dia, Lançamento
