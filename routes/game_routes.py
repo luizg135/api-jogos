@@ -208,3 +208,21 @@ def update_wishlist_prices():
         print(f"ERRO NA ROTA /wishlist/update-prices: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro no servidor ao tentar atualizar os preços."}), 500
+
+# --- NOVA ROTA PARA JOGOS SIMILARES ---
+@game_bp.route('/game_details_and_similar/<string:game_name>', methods=['GET'])
+@jwt_required()
+def get_single_game_details_with_similar(game_name):
+    """
+    Retorna os detalhes de um jogo da biblioteca e sugestões de jogos similares
+    da RAWG API (com cache), indicando quais jogos similares o usuário já possui.
+    """
+    try:
+        result = game_service.get_game_details_and_similar(game_name)
+        if result["success"]:
+            return jsonify(result), 200
+        return jsonify(result), 404 # Ou outro código de erro apropriado
+    except Exception as e:
+        print(f"ERRO NA ROTA /game_details_and_similar/{game_name}: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Erro no servidor ao buscar detalhes ou jogos similares."}), 500
