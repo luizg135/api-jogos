@@ -402,7 +402,7 @@ def get_all_game_data():
         # --- FIM NOVO ---
 
         # NOVO: Lógica para notificar promoções na lista de desejos
-        for wish in processed_wishlist_data: # Usar processed_wishlist_data aqui
+        for wish in wishlist_data_filtered: # <-- Alteração aqui: usa a lista já filtrada
             wish_name = wish.get('Nome', 'Um jogo')
             last_update_str = wish.get('Ultima Atualizacao')
             
@@ -452,7 +452,7 @@ def get_public_profile_data():
         game_sheet_data = _get_data_from_sheet('Jogos'); games_data = game_sheet_data if game_sheet_data else []
         wishlist_sheet_data = _get_data_from_sheet('Desejos')
         all_wishlist_data = wishlist_sheet_data if wishlist_sheet_data else []
-        profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_records else []
+        profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_sheet_data else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
         achievements_sheet_data = _get_data_from_sheet('Conquistas'); all_achievements = achievements_sheet_data if achievements_sheet_data else []
 
