@@ -449,12 +449,20 @@ def get_all_game_data():
 
 def get_public_profile_data():
     try:
+        print("DEBUG: Iniciando get_public_profile_data.")
         game_sheet_data = _get_data_from_sheet('Jogos'); games_data = game_sheet_data if game_sheet_data else []
+        print(f"DEBUG get_public_profile_data: 'Jogos' data carregada. Total de registros: {len(games_data)}")
+        
         wishlist_sheet_data = _get_data_from_sheet('Desejos')
         all_wishlist_data = wishlist_sheet_data if wishlist_sheet_data else []
+        print(f"DEBUG get_public_profile_data: 'Desejos' data carregada. Total de registros: {len(all_wishlist_data)}")
+        
         profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_sheet_data else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
+        print(f"DEBUG get_public_profile_data: 'Perfil' data carregada: {profile_data}")
+        
         achievements_sheet_data = _get_data_from_sheet('Conquistas'); all_achievements = achievements_sheet_data if achievements_sheet_data else []
+        print(f"DEBUG get_public_profile_data: 'Conquistas' data carregada. Total de registros: {len(all_achievements)}")
 
         # Calcula as estatísticas públicas
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
@@ -480,17 +488,21 @@ def get_public_profile_data():
             'total_notas_baixas': len([n for n in notas if n <= 30]),
             'WISHLIST_TOTAL': len(all_wishlist_data) # Inclui o total da wishlist para cálculo de conquistas
         }
+        print(f"DEBUG get_public_profile_data: base_stats calculadas: {base_stats}")
 
         # Conquistas desbloqueadas para o cálculo do nível e rank
         # Passa all_wishlist_data para _check_achievements para que WISHLIST_TOTAL seja calculado corretamente
         completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         public_stats = {**base_stats, **gamer_stats}
+        print(f"DEBUG get_public_profile_data: public_stats finais: {public_stats}")
         
         # Filtra os últimos 5 jogos platinados com imagens
         recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
         recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
+        print(f"DEBUG get_public_profile_data: últimos platinados: {recent_platinums}")
         
+        print("DEBUG: get_public_profile_data finalizado com sucesso. Retornando dados.")
         return {
             'perfil': profile_data,
             'estatisticas': public_stats,
