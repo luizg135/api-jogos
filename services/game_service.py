@@ -134,10 +134,11 @@ def _get_notifications_sheet():
     """Retorna o objeto da aba de notificações."""
     return _get_sheet('Notificações')
 
-def _add_notification(notification_type, message_to_save, message_for_display=None):
-    """Adiciona uma nova notificação à planilha, evitando duplicatas recentes.
+def _add_notification(notification_type, message_to_save, message_for_display=None, game_name=None):
+    """Adiciona uma nova notificação à planilha, evitando duplicatas recentes ou re-notificando promoções após um período.
        message_to_save: A mensagem completa com o marco (para desduplicação).
        message_for_display: A mensagem sem o marco (para exibição no frontend).
+       game_name: O nome do jogo, usado para desduplicação de promoções.
     """
     sheet = _get_notifications_sheet()
     if not sheet:
@@ -145,20 +146,42 @@ def _add_notification(notification_type, message_to_save, message_for_display=No
         return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
 
     notifications = _get_data_from_sheet('Notificações') # Busca do cache ou da planilha
-    for notif in notifications:
-        # A desduplicação é feita com base na message_to_save
-        if notif.get('Tipo') == notification_type and \
-           notif.get('Mensagem') == message_to_save: # Compara com a mensagem completa salva
-            print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message_to_save}'")
-            return {"success": False, "message": "Notificação duplicada evitada."}
+    brasilia_tz = pytz.timezone('America/Sao_Paulo')
+    current_time = datetime.now(brasilia_tz)
+
+    if notification_type == "Promoção" and game_name:
+        # Filter for existing promotion notifications for this specific game
+        existing_promotions = [
+            n for n in notifications
+            if n.get('Tipo') == "Promoção" and game_name in n.get('Mensagem', '') # Simple check for game_name in message
+        ]
+
+        if existing_promotions:
+            # Find the most recent promotion notification for this game
+            latest_promotion_date = None
+            for notif in existing_promotions:
+                try:
+                    notif_date = brasilia_tz.localize(datetime.strptime(notif.get('Data'), "%Y-%m-%d %H:%M:%S"))
+                    if latest_promotion_date is None or notif_date > latest_promotion_date:
+                        latest_promotion_date = notif_date
+                except (ValueError, TypeError):
+                    continue
+
+            # If the latest promotion notification is less than 30 days old, do not re-notify
+            if latest_promotion_date and (current_time - latest_promotion_date).days < 30:
+                print(f"Notificação de promoção para '{game_name}' evitada (já notificada há menos de 30 dias).")
+                return {"success": False, "message": "Notificação de promoção duplicada evitada."}
+    else:
+        # Standard deduplication for other notification types
+        for notif in notifications:
+            if notif.get('Tipo') == notification_type and \
+               notif.get('Mensagem') == message_to_save:
+                print(f"Notificação duplicada evitada: Tipo='{notification_type}', Mensagem='{message_to_save}'")
+                return {"success": False, "message": "Notificação duplicada evitada."}
 
     new_id = len(notifications) + 1
+    timestamp = current_time.strftime("%Y-%m-%d %H:%M:%S")
     
-    brasilia_tz = pytz.timezone('America/Sao_Paulo')
-    timestamp = datetime.now(brasilia_tz).strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Salva a mensagem completa (com marco) na planilha para desduplicação
-    # Mas se message_for_display for fornecido, usa-o para o frontend
     final_message_to_save = message_to_save
     final_message_for_display = message_for_display if message_for_display is not None else message_to_save
 
@@ -368,14 +391,12 @@ def get_all_game_data():
                 promotion_found = False
                 if steam_current > 0 and (steam_current <= steam_lowest * 1.01): # Margem de 1%
                     notification_message = f"🔥 Promoção na Steam! '{wish_name}' por R${steam_current:.2f}."
-                    if not any(n.get('Tipo') == "Promoção" and n.get('Mensagem') == notification_message for n in existing_notifications):
-                        _add_notification("Promoção", notification_message)
-                        promotion_found = True
+                    _add_notification("Promoção", notification_message, game_name=wish_name) # Passa game_name
+                    promotion_found = True
                 
                 if psn_current > 0 and (psn_current <= psn_lowest * 1.01) and not promotion_found: # Evita duas notificações para o mesmo jogo se ambas as plataformas estiverem em promoção
                     notification_message = f"🔥 Promoção na PSN! '{wish_name}' por R${psn_current:.2f}."
-                    if not any(n.get('Tipo') == "Promoção" and n.get('Mensagem') == notification_message for n in existing_notifications):
-                        _add_notification("Promoção", notification_message)
+                    _add_notification("Promoção", notification_message, game_name=wish_name) # Passa game_name
             # FIM NOVO
 
         return {
@@ -392,7 +413,7 @@ def get_public_profile_data():
         game_sheet_data = _get_data_from_sheet('Jogos'); games_data = game_sheet_data if game_sheet_data else []
         wishlist_sheet_data = _get_data_from_sheet('Desejos')
         all_wishlist_data = wishlist_sheet_data if wishlist_sheet_data else []
-        profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_sheet_data else []
+        profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_records else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
         achievements_sheet_data = _get_data_from_sheet('Conquistas'); all_achievements = achievements_sheet_data if achievements_sheet_data else []
 
