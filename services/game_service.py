@@ -17,6 +17,11 @@ _data_cache = {}
 _cache_ttl_seconds = 300 # Tempo de vida do cache em segundos (5 minutos)
 _last_cache_update = {}
 
+# --- Cache global para sugestões de jogos similares ---
+_similar_games_cache = {}
+_similar_games_cache_last_update = {}
+_similar_games_cache_ttl_seconds = 86400 # Cache de jogos similares por 24 horas (em segundos)
+
 def _get_sheet(sheet_name):
     """Retorna o objeto da planilha, usando cache."""
     if sheet_name in _sheet_cache:
@@ -449,12 +454,20 @@ def get_all_game_data():
 
 def get_public_profile_data():
     try:
+        print("DEBUG: Iniciando get_public_profile_data.")
         game_sheet_data = _get_data_from_sheet('Jogos'); games_data = game_sheet_data if game_sheet_data else []
+        print(f"DEBUG get_public_profile_data: 'Jogos' data carregada. Total de registros: {len(games_data)}")
+        
         wishlist_sheet_data = _get_data_from_sheet('Desejos')
         all_wishlist_data = wishlist_sheet_data if wishlist_sheet_data else []
+        print(f"DEBUG get_public_profile_data: 'Desejos' data carregada. Total de registros: {len(all_wishlist_data)}")
+        
         profile_sheet_data = _get_data_from_sheet('Perfil'); profile_records = profile_sheet_data if profile_sheet_data else []
         profile_data = {item['Chave']: item['Valor'] for item in profile_records}
+        print(f"DEBUG get_public_profile_data: 'Perfil' data carregada: {profile_data}")
+        
         achievements_sheet_data = _get_data_from_sheet('Conquistas'); all_achievements = achievements_sheet_data if achievements_sheet_data else []
+        print(f"DEBUG get_public_profile_data: 'Conquistas' data carregada. Total de registros: {len(all_achievements)}")
 
         # Calcula as estatísticas públicas
         tempos_de_jogo = [int(str(g.get('Tempo de Jogo', 0)).replace('h', '')) for g in games_data]
@@ -480,17 +493,21 @@ def get_public_profile_data():
             'total_notas_baixas': len([n for n in notas if n <= 30]),
             'WISHLIST_TOTAL': len(all_wishlist_data) # Inclui o total da wishlist para cálculo de conquistas
         }
+        print(f"DEBUG get_public_profile_data: base_stats calculadas: {base_stats}")
 
         # Conquistas desbloqueadas para o cálculo do nível e rank
         # Passa all_wishlist_data para _check_achievements para que WISHLIST_TOTAL seja calculado corretamente
         completed_achievements, _ = _check_achievements(games_data, base_stats, all_achievements, all_wishlist_data)
         gamer_stats = _calculate_gamer_stats(games_data, completed_achievements)
         public_stats = {**base_stats, **gamer_stats}
+        print(f"DEBUG get_public_profile_data: public_stats finais: {public_stats}")
         
         # Filtra os últimos 5 jogos platinados com imagens
         recent_platinums = [g for g in games_data if g.get('Platinado?') == 'Sim' and g.get('Link')]
         recent_platinums.sort(key=lambda x: x.get('Terminado em', '0000-00-00'), reverse=True)
+        print(f"DEBUG get_public_profile_data: últimos platinados: {recent_platinums}")
         
+        print("DEBUG: get_public_profile_data finalizado com sucesso. Retornando dados.")
         return {
             'perfil': profile_data,
             'estatisticas': public_stats,
@@ -775,7 +792,7 @@ def purchase_wish_item_in_sheet(item_name):
         print(f"ERRO: Erro ao marcar item como comprado: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao processar a compra."}
 
-# NOVO: Funções para acionar a GitHub Action de web scraping
+# --- Funções para acionar a GitHub Action de web scraping ---
 def trigger_wishlist_scraper_action():
     """Aciona a GitHub Action de web scraping da lista de desejos via API REST."""
     try:
@@ -813,3 +830,107 @@ def trigger_wishlist_scraper_action():
     except Exception as e:
         print(f"ERRO GENÉRICO: Erro ao acionar a Action: {e}")
         return {"success": False, "message": "Ocorreu um erro interno ao tentar acionar a action."}
+
+# --- NOVAS FUNÇÕES PARA JOGOS SIMILARES ---
+def _fetch_similar_games_from_rawg_api(rawg_id):
+    """Busca jogos similares da RAWG API para um dado RAWG_ID."""
+    if not Config.RAWG_API_KEY:
+        print("ERRO: RAWG_API_KEY não configurada para buscar jogos similares.")
+        return []
+
+    try:
+        # Usando o endpoint 'game-series' para jogos diretamente relacionados
+        url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
+        response = requests.get(url)
+        response.raise_for_status()  # Levanta um erro para códigos de status HTTP ruins (4xx ou 5xx)
+        
+        data = response.json()
+        similar_games = []
+        # Limita a 5 sugestões para não sobrecarregar
+        for game_data in data.get('results', [])[:5]:
+            similar_games.append({
+                'Nome': game_data.get('name'),
+                'RAWG_ID': game_data.get('id'),
+                'Link': game_data.get('background_image'), # Usamos background_image como link da imagem
+                'Metacritic': game_data.get('metacritic'),
+                'Generos': ', '.join([g['name'] for g in game_data.get('genres', [])])
+            })
+        print(f"DEBUG: {len(similar_games)} jogos similares encontrados para RAWG_ID {rawg_id} da RAWG API.")
+        return similar_games
+    except requests.exceptions.RequestException as e:
+        print(f"ERRO: Erro ao buscar jogos similares da RAWG API para RAWG_ID {rawg_id}: {e}"); traceback.print_exc()
+        return []
+    except Exception as e:
+        print(f"ERRO GENÉRICO: Erro ao processar resposta da RAWG API para RAWG_ID {rawg_id}: {e}"); traceback.print_exc()
+        return []
+
+
+def get_game_details_and_similar(game_name):
+    """
+    Retorna os detalhes de um jogo da biblioteca e sugestões de jogos similares
+    da RAWG API (com cache), indicando quais jogos similares o usuário já possui.
+    """
+    try:
+        print(f"DEBUG: Buscando detalhes e similares para o jogo: '{game_name}'")
+        all_user_games = _get_data_from_sheet('Jogos') # Carrega todos os jogos do usuário
+        
+        # Encontra o jogo na sua biblioteca
+        game_data = next((game for game in all_user_games if game.get('Nome') == game_name), None)
+
+        if not game_data:
+            print(f"AVISO: Jogo '{game_name}' não encontrado na biblioteca.")
+            return {"success": False, "message": "Jogo não encontrado.", "details": None, "similar_games": []}
+
+        rawg_id = game_data.get('RAWG_ID')
+        similar_games = []
+        
+        if rawg_id:
+            current_time = datetime.now()
+            # Verifica o cache para jogos similares
+            if rawg_id in _similar_games_cache and \
+               (current_time - _similar_games_cache_last_update.get(rawg_id, datetime.min)).total_seconds() < _similar_games_cache_ttl_seconds:
+                similar_games = _similar_games_cache[rawg_id]
+                print(f"DEBUG: Jogos similares para RAWG_ID {rawg_id} servidos do cache.")
+            else:
+                print(f"DEBUG: Buscando jogos similares para RAWG_ID {rawg_id} da RAWG API (cache expirado ou ausente).")
+                similar_games = _fetch_similar_games_from_rawg_api(rawg_id)
+                _similar_games_cache[rawg_id] = similar_games
+                _similar_games_cache_last_update[rawg_id] = current_time
+        else:
+            print(f"AVISO: Jogo '{game_name}' não possui RAWG_ID. Não é possível buscar jogos similares.")
+
+        # --- NOVO: Cruza os jogos similares com a biblioteca do usuário ---
+        # Cria um mapa para busca rápida dos jogos do usuário por RAWG_ID ou Nome
+        owned_games_map_by_rawg_id = {game.get('RAWG_ID'): game for game in all_user_games if game.get('RAWG_ID')}
+        owned_games_map_by_name = {game.get('Nome', '').lower(): game for game in all_user_games if game.get('Nome')}
+
+        processed_similar_games = []
+        for s_game in similar_games:
+            s_game['is_owned'] = False
+            s_game['Status'] = None # Adiciona status apenas se for possuído
+
+            # Tenta encontrar pelo RAWG_ID primeiro
+            if s_game.get('RAWG_ID') and s_game['RAWG_ID'] in owned_games_map_by_rawg_id:
+                owned_game = owned_games_map_by_rawg_id[s_game['RAWG_ID']]
+                s_game['is_owned'] = True
+                s_game['Status'] = owned_game.get('Status')
+            # Se não encontrar pelo RAWG_ID, tenta pelo Nome (case-insensitive)
+            elif s_game.get('Nome') and s_game['Nome'].lower() in owned_games_map_by_name:
+                owned_game = owned_games_map_by_name[s_game['Nome'].lower()]
+                s_game['is_owned'] = True
+                s_game['Status'] = owned_game.get('Status')
+            
+            processed_similar_games.append(s_game)
+        # --- FIM NOVO ---
+
+        # Retorna os detalhes do jogo e os jogos similares processados
+        return {
+            "success": True,
+            "message": "Detalhes do jogo e similares obtidos com sucesso.",
+            "details": game_data,
+            "similar_games": processed_similar_games # Retorna a lista processada
+        }
+
+    except Exception as e:
+        print(f"ERRO: Erro ao obter detalhes do jogo e similares para '{game_name}': {e}"); traceback.print_exc()
+        return {"success": False, "message": "Erro ao buscar detalhes do jogo ou similares.", "details": None, "similar_games": []}
