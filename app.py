@@ -14,8 +14,9 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = Config.JWT_SECRET_KEY
 jwt = JWTManager(app)
 
-# Configurações para o CORS (para o frontend funcionar)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# Configurações para o CORS
+# Adicionado explicitamente a origem do frontend para resolver problemas de CORS
+CORS(app, resources={r"/api/*": {"origins": ["https://savepoint-hub.netlify.app", "*"]}})
 
 # Registra os blueprints
 app.register_blueprint(auth_bp, url_prefix='/api')
