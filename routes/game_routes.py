@@ -191,22 +191,20 @@ def mark_notification_read(notification_id):
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro ao marcar notificação como lida.", "detalhes_tecnicos": str(e)}), 500
 
-# --- NOVA ROTA PARA SORTEAR JOGO ---
+# --- ROTA PARA SORTEAR JOGO ---
 @game_bp.route('/random', methods=['GET'])
 @jwt_required()
 def get_random_game_route():
     """
     Sorteia um jogo aleatório com base em filtros opcionais da query string.
-    Ex: /api/games/random?plataforma=Computador&estilo=RPG&metacritic_min=80
+    Ex: /api/games/random?plataforma=Computador&estilo=RPG
     """
     try:
-        # Extrai os parâmetros de filtro da URL (query string)
         plataforma = request.args.get('plataforma')
         estilo = request.args.get('estilo')
         metacritic_min = request.args.get('metacritic_min')
         metacritic_max = request.args.get('metacritic_max')
         
-        # Chama o serviço para obter o jogo sorteado
         random_game = game_service.get_random_game(plataforma, estilo, metacritic_min, metacritic_max)
         
         if random_game:
@@ -217,7 +215,6 @@ def get_random_game_route():
         print(f"!!! ERRO NA ROTA /random: {e}")
         traceback.print_exc()
         return jsonify({"error": "Ocorreu um erro interno ao sortear o jogo.", "detalhes_tecnicos": str(e)}), 500
-# --- FIM DA NOVA ROTA ---
 
 @game_bp.route('/wishlist/update-prices', methods=['POST'])
 @jwt_required()
