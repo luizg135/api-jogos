@@ -258,6 +258,101 @@ def mark_notification_as_read(notification_id):
 
 # --- FIM DAS Funções de Notificação ---
 
+# --- NOVA FUNÇÃO: Obter histórico de preços para um jogo ---
+def get_price_history_for_game(game_name: str):
+    """
+    Retorna o histórico de preços para um jogo específico da aba 'Historico de Preços'.
+    """
+    try:
+        history_data = _get_data_from_sheet('Historico de Preços')
+        if not history_data:
+            return []
+
+        # Filtrar por nome do jogo
+        game_history = [
+            {'date': item.get('Data'), 'platform': item.get('Plataforma'), 'price': float(str(item.get('Preço', 0)).replace(',', '.'))}
+            for item in history_data if item.get('Nome do Jogo') == game_name and item.get('Preço') not in ['Não encontrado', 'Gratuito', None, '']
+        ]
+        
+        # Ordenar por data
+        game_history.sort(key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d"))
+        
+        return game_history
+    except Exception as e:
+        print(f"ERRO: Erro ao obter histórico de preços para '{game_name}': {e}"); traceback.print_exc()
+        return []
+
+# --- NOVA LÓGICA DE PROMOÇÃO ---
+def _check_for_promotions(wish, existing_notifications, all_history_data):
+    """
+    Verifica se um jogo está em promoção com base no histórico de preços.
+    Regras:
+    1. Preço atual está 20% abaixo da média dos últimos 30 dias.
+    2. Queda de 10% ou mais em relação à semana anterior.
+    """
+    game_name = wish.get('Nome', 'Um jogo')
+    brasilia_tz = pytz.timezone('America/Sao_Paulo')
+    today = datetime.now(brasilia_tz).date()
+
+    promotion_found = False
+
+    # Filtrar histórico para o jogo atual
+    game_history_raw = [
+        item for item in all_history_data
+        if item.get('Nome do Jogo') == game_name and item.get('Preço') not in ['Não encontrado', 'Gratuito', None, '']
+    ]
+    
+    if not game_history_raw:
+        return False # Sem histórico para verificar promoções
+
+    # Converter para DataFrame para facilitar a manipulação
+    df_history = pd.DataFrame(game_history_raw)
+    df_history['Data'] = pd.to_datetime(df_history['Data'])
+    df_history['Preço'] = df_history['Preço'].astype(str).str.replace(',', '.').astype(float)
+    df_history = df_history.sort_values(by='Data')
+
+    # Filtrar por Steam e PSN para análise separada
+    steam_history = df_history[df_history['Plataforma'] == 'Steam']
+    psn_history = df_history[df_history['Plataforma'] == 'PSN']
+
+    def check_platform_promotion(platform_name, history_df, current_price_str):
+        nonlocal promotion_found
+        if history_df.empty:
+            return
+
+        current_price_float = float(str(current_price_str).replace(',', '.')) if current_price_str not in ['Não encontrado', 'Gratuito', None, ''] else float('inf')
+        if current_price_float == float('inf') or current_price_float == 0.0: # Não verifica se não tem preço ou é gratuito
+            return
+        
+        # Últimos 30 dias
+        last_30_days_data = history_df[history_df['Data'] >= (today - timedelta(days=30))]
+        if not last_30_days_data.empty:
+            average_price_30_days = last_30_days_data['Preço'].mean()
+            if current_price_float <= average_price_30_days * 0.80: # 20% abaixo da média
+                notification_message = f"Promoção na {platform_name}! '{game_name}' está R${current_price_float:.2f}, 20% abaixo da média dos últimos 30 dias."
+                _add_notification("Promoção", notification_message, game_name=game_name)
+                promotion_found = True
+                print(f"DEBUG: Promoção detectada (média 30 dias) para {game_name} na {platform_name}.")
+                return
+
+        # Queda em relação à semana anterior
+        one_week_ago = today - timedelta(days=7)
+        price_one_week_ago_df = history_df[history_df['Data'].dt.date == one_week_ago]
+        if not price_one_week_ago_df.empty:
+            price_one_week_ago = price_one_week_ago_df['Preço'].iloc[-1] # Último preço registrado uma semana atrás
+            if current_price_float <= price_one_week_ago * 0.90: # Queda de 10% ou mais
+                notification_message = f"Queda de Preço na {platform_name}! '{game_name}' está R${current_price_float:.2f}, caiu 10% ou mais desde a semana passada."
+                _add_notification("Promoção", notification_message, game_name=game_name)
+                promotion_found = True
+                print(f"DEBUG: Promoção detectada (queda semanal) para {game_name} na {platform_name}.")
+                return
+    
+    # Chama a função para Steam e PSN
+    check_platform_promotion('Steam', steam_history, wish.get('Steam Preco Atual'))
+    check_platform_promotion('PSN', psn_history, wish.get('PSN Preco Atual'))
+
+    return promotion_found
+
 def get_all_game_data():
     try:
         print("DEBUG: Iniciando get_all_game_data.")
@@ -298,9 +393,11 @@ def get_all_game_data():
         print(f"DEBUG: Dados de 'Conquistas' carregados. Total: {len(all_achievements)}")
         
         existing_notifications = get_all_notifications_for_frontend()
+        # Adiciona o carregamento do histórico de preços para uso na lógica de promoções
+        all_price_history_data = _get_data_from_sheet('Historico de Preços')
 
         def sort_key(game):
-            try: nota = float(str(game.get('Nota', '-1')).replace(',', '.'))
+            try: nota = float(str(g.get('Nota', '-1')).replace(',', '.'))
             except (ValueError, TypeError): nota = -1
             return (-nota, game.get('Nome', '').lower())
         games_data.sort(key=sort_key)
@@ -381,34 +478,8 @@ def get_all_game_data():
                     print(f"ERRO ao processar data de lançamento para '{wish.get('Nome')}': {e}")
        
         for wish in wishlist_data_filtered: 
-            wish_name = wish.get('Nome', 'Um jogo')
-            last_update_str = wish.get('Ultima Atualizacao')
-            
-            last_update_datetime = None
-            if last_update_str:
-                try:
-                    last_update_datetime = brasilia_tz.localize(datetime.strptime(last_update_str, "%Y-%m-%d %H:%M:%S"))
-                except ValueError:
-                    print(f"AVISO: Não foi possível parsear 'Ultima Atualizacao' para '{wish_name}': {last_update_str}")
-            
-            if not last_update_datetime:
-                continue
-
-            if (current_time - last_update_datetime).total_seconds() / 3600 <= 24: 
-                steam_current = wish['Steam Preco Atual'] 
-                steam_lowest = wish['Steam Menor Preco Historico'] 
-                psn_current = wish['PSN Preco Atual'] 
-                psn_lowest = wish['PSN Menor Preco Historico'] 
-
-                promotion_found = False
-                if steam_current > 0 and (steam_current <= steam_lowest * 1.01): 
-                    notification_message = f"Promoção na Steam! '{wish_name}' por R${steam_current:.2f}."
-                    _add_notification("Promoção", notification_message, game_name=wish_name) 
-                    promotion_found = True
-                
-                if psn_current > 0 and (psn_current <= psn_lowest * 1.01) and not promotion_found: 
-                    notification_message = f"Promoção na PSN! '{wish_name}' por R${psn_current:.2f}."
-                    _add_notification("Promoção", notification_message, game_name=wish_name) 
+            # Chama a nova função de verificação de promoções
+            _check_for_promotions(wish, existing_notifications, all_price_history_data)
             
         print("DEBUG: get_all_game_data finalizado com sucesso.")
         return {
