@@ -25,10 +25,21 @@ def _get_sheet(sheet_name):
         return _sheet_cache[sheet_name]
     try:
         print(f"DEBUG: Tentando autenticar e abrir planilha '{sheet_name}'.")
+        
+        # Adicionado logging para verificar as configurações da planilha
+        print(f"DEBUG: Config.GAME_SHEET_URL: {Config.GAME_SHEET_URL}")
+        if not Config.GOOGLE_SHEETS_CREDENTIALS_JSON:
+            print("CRITICAL ERROR: GOOGLE_SHEETS_CREDENTIALS_JSON não está definida em Config.")
+            return None
+        
         creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
+        # Para evitar imprimir credenciais sensíveis, apenas confirmamos que foi lido
+        print("DEBUG: GOOGLE_SHEETS_CREDENTIALS_JSON lida com sucesso (conteúdo não exibido por segurança).")
+
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         client = gspread.authorize(creds)
+        
         spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
         worksheet = spreadsheet.worksheet(sheet_name)
         _sheet_cache[sheet_name] = worksheet
@@ -54,6 +65,14 @@ def _get_data_from_sheet(sheet_name):
     try:
         print(f"DEBUG: Tentando ler todos os registros da planilha '{sheet_name}'.")
         data = sheet.get_all_records()
+        
+        # Adicionado logging para inspecionar os dados brutos e cabeçalhos
+        print(f"DEBUG: Dados brutos de '{sheet_name}' (primeiros 5 registros): {data[:5]}")
+        if data:
+            print(f"DEBUG: Cabeçalhos da planilha '{sheet_name}': {list(data[0].keys())}")
+        else:
+            print(f"DEBUG: Planilha '{sheet_name}' retornou dados vazios.")
+
         _data_cache[sheet_name] = data
         _last_cache_update[sheet_name] = current_time
         print(f"DEBUG: Dados da planilha '{sheet_name}' atualizados do Google Sheets e armazenados em cache. Total de registros: {len(data)}")
@@ -806,7 +825,7 @@ def trigger_wishlist_scraper_action():
 
         url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/actions/workflows/{workflow_file}/dispatches'
         headers = {
-            'Accept': 'application/vnd.github.v3+json',
+            'Accept': 'application/vnd.github.com+json', # Alterado para o tipo de mídia correto
             'Authorization': f'token {github_pat}',
         }
         data = { 'ref': 'main' }
