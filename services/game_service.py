@@ -396,10 +396,15 @@ def get_all_game_data():
         # Adiciona o carregamento do histórico de preços para uso na lógica de promoções
         all_price_history_data = _get_data_from_sheet('Historico de Preços')
 
-        def sort_key(game):
-            try: nota = float(str(g.get('Nota', '-1')).replace(',', '.'))
-            except (ValueError, TypeError): nota = -1
+        def sort_key(game): # Corrigido: 'game' é o argumento, não 'g'
+            try: 
+                # Certifica-se de que 'Nota' é um número antes de tentar converter
+                nota_str = str(game.get('Nota', '-1')).replace(',', '.')
+                nota = float(nota_str)
+            except (ValueError, TypeError): 
+                nota = -1 # Valor padrão para jogos sem nota válida
             return (-nota, game.get('Nome', '').lower())
+        
         games_data.sort(key=sort_key)
 
         notas = [float(str(g.get('Nota', 0)).replace(',', '.')) for g in games_data if g.get('Nota')]
@@ -623,7 +628,7 @@ def add_wish_to_sheet(wish_data):
             'Steam Menor Preco Historico': wish_data.get('Steam Menor Preco Historico', 0),
             'PSN Preco Atual': wish_data.get('PSN Preco Atual', 0),
             'PSN Menor Preco Historico': wish_data.get('PSN Menor Preco Historico', 0),
-            'Ultima Atualizacao': wish_data.get('Ultima Atualizacao', '') 
+            'Ultima Atualizacao': '' 
         }
 
         ordered_row_values = [row_data.get(header, '') for header in headers]
