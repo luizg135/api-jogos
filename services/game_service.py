@@ -10,6 +10,7 @@ import requests
 import deepl
 import pytz
 import os
+import random
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
@@ -813,3 +814,52 @@ def trigger_wishlist_scraper_action():
     except Exception as e:
         print(f"ERRO GENÉRICO: Erro ao acionar a Action: {e}")
         return {"success": False, "message": "Ocorreu um erro interno ao tentar acionar a action."}
+
+# --- NOVA FUNÇÃO PARA SORTEAR JOGO ---
+def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacritic_max=None):
+    """
+    Filtra e sorteia um jogo aleatório da biblioteca que não esteja finalizado.
+    """
+    try:
+        # Usamos _get_data_from_sheet para aproveitar o cache
+        games_data = _get_data_from_sheet('Jogos')
+        if not games_data:
+            return None
+
+        # Convertendo para DataFrame para facilitar a manipulação
+        df = pd.DataFrame(games_data)
+
+        # Garante que a coluna 'Status' existe e não tem valores nulos para o filtro
+        df_filtered = df.dropna(subset=['Status'])
+        
+        # 1. Filtra jogos que NÃO estão nos status de conclusão
+        jogos_elegiveis = df_filtered[~df_filtered['Status'].isin(['Platinado', 'Abandonado', 'Finalizado'])]
+
+        # 2. Aplica filtros opcionais
+        if plataforma:
+            jogos_elegiveis = jogos_elegiveis[jogos_elegiveis['Plataforma'].str.lower() == plataforma.lower()]
+        
+        if estilo:
+            jogos_elegiveis_estilo = jogos_elegiveis.dropna(subset=['Estilo'])
+            jogos_elegiveis = jogos_elegiveis_estilo[jogos_elegiveis_estilo['Estilo'].str.contains(estilo, case=False, na=False)]
+
+        if metacritic_min:
+            jogos_elegiveis['Metacritic'] = pd.to_numeric(jogos_elegiveis['Metacritic'], errors='coerce')
+            jogos_elegiveis = jogos_elegiveis.dropna(subset=['Metacritic'])
+            jogos_elegiveis = jogos_elegiveis[jogos_elegiveis['Metacritic'] >= int(metacritic_min)]
+
+        if metacritic_max:
+            jogos_elegiveis['Metacritic'] = pd.to_numeric(jogos_elegiveis['Metacritic'], errors='coerce')
+            jogos_elegiveis = jogos_elegiveis.dropna(subset=['Metacritic'])
+            jogos_elegiveis = jogos_elegiveis[jogos_elegiveis['Metacritic'] <= int(metacritic_max)]
+
+        # 3. Se a lista de jogos elegíveis não estiver vazia, sorteia um
+        if not jogos_elegiveis.empty:
+            jogo_sorteado = jogos_elegiveis.sample(n=1)
+            return jogo_sorteado.to_dict(orient='records')[0]
+        
+        return None
+    except Exception as e:
+        print(f"ERRO na função get_random_game: {e}"); traceback.print_exc()
+        return None
+# --- FIM DA NOVA FUNÇÃO ---
