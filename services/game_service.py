@@ -142,17 +142,12 @@ def _get_notifications_sheet():
     return _get_sheet('Notificações')
 
 def _add_notification(notification_type, message_to_save, message_for_display=None, game_name=None):
-    """Adiciona uma nova notificação à planilha, evitando duplicatas recentes ou re-notificando promoções após um período.
-        message_to_save: A mensagem completa com o marco (para desduplicação).
-        message_for_display: A mensagem sem o marco (para exibição no frontend).
-        game_name: O nome do jogo, usado para desduplicação de promoções.
-    """
     sheet = _get_notifications_sheet()
     if not sheet:
         print("ERRO: Conexão com a planilha de notificações falhou ao tentar adicionar notificação.")
         return {"success": False, "message": "Conexão com a planilha de notificações falhou."}
 
-    notifications = _get_data_from_sheet('Notificações') # Busca do cache ou da planilha
+    notifications = _get_data_from_sheet('Notificações') 
     brasilia_tz = pytz.timezone('America/Sao_Paulo')
     current_time = datetime.now(brasilia_tz)
 
@@ -195,7 +190,6 @@ def _add_notification(notification_type, message_to_save, message_for_display=No
     return {"success": True, "message": "Notificação adicionada com sucesso."}
 
 def get_all_notifications_for_frontend():
-    """Retorna TODAS as notificações (lidas e não lidas) para o frontend."""
     notifications = _get_data_from_sheet('Notificações') 
     
     processed_notifications = []
@@ -221,7 +215,6 @@ def get_all_notifications_for_frontend():
     return processed_notifications
 
 def mark_notification_as_read(notification_id):
-    """Marca uma notificação específica como lida."""
     sheet = _get_notifications_sheet()
     if not sheet:
         print("ERRO: Conexão com a planilha de notificações falhou ao tentar marcar como lida.")
@@ -751,7 +744,6 @@ def trigger_wishlist_scraper_action():
         print(f"ERRO GENÉRICO: Erro ao acionar a Action: {e}")
         return {"success": False, "message": "Ocorreu um erro interno ao tentar acionar a action."}
 
-# --- NOVA FUNÇÃO PARA SORTEAR JOGO ---
 def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacritic_max=None):
     """
     Filtra e sorteia um jogo aleatório da biblioteca que não esteja finalizado.
@@ -791,3 +783,26 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
     except Exception as e:
         print(f"ERRO na função get_random_game: {e}"); traceback.print_exc()
         return None
+
+# --- NOVA FUNÇÃO PARA HISTÓRICO DE PREÇOS ---
+def get_price_history_for_game(game_name):
+    """
+    Busca o histórico de preços para um jogo específico da aba 'Historico de Preços'.
+    """
+    try:
+        print(f"DEBUG: Buscando histórico de preços para '{game_name}'.")
+        # Usamos _get_data_from_sheet para aproveitar o cache, se aplicável
+        price_history_data = _get_data_from_sheet('Historico de Preços')
+        if not price_history_data:
+            print(f"DEBUG: Aba 'Historico de Preços' está vazia ou não foi encontrada.")
+            return []
+
+        # Filtra o histórico para o jogo específico
+        game_history = [row for row in price_history_data if row.get('Nome do Jogo') == game_name]
+        
+        print(f"DEBUG: Encontrados {len(game_history)} registros de preço para '{game_name}'.")
+        return game_history
+        
+    except Exception as e:
+        print(f"ERRO na função get_price_history_for_game: {e}"); traceback.print_exc()
+        return []
