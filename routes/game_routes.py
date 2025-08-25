@@ -230,3 +230,18 @@ def update_wishlist_prices():
         print(f"ERRO NA ROTA /wishlist/update-prices: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro no servidor ao tentar atualizar os preços."}), 500
+
+# --- NOVA ROTA: Histórico de Preços para um Jogo ---
+@game_bp.route('/wishlist/price-history/<string:game_name>', methods=['GET'])
+@jwt_required()
+def get_wish_price_history(game_name):
+    """
+    Retorna o histórico de preços para um jogo específico da lista de desejos.
+    """
+    try:
+        history = game_service.get_price_history_for_game(game_name)
+        return jsonify(history)
+    except Exception as e:
+        print(f"!!! ERRO NA ROTA /wishlist/price-history/{game_name}: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Não foi possível obter o histórico de preços.", "detalhes_tecnicos": str(e)}), 500
