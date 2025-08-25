@@ -11,7 +11,7 @@ GENRE_TRANSLATIONS = {
     "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
     "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
-    "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
+    "Arcade": "Arcade", "Platformer": "Plataforma", "Racing": "Corrida",
     "Massively Multiplayer": "MMO", "Sports": "Esportes", "Fighting": "Luta",
     "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
     "Card": "Cartas"
