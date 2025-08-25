@@ -10,6 +10,7 @@ import requests
 import deepl
 import pytz
 import os
+import random # Importado para a funcionalidade de sortear jogo
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
@@ -140,11 +141,12 @@ def _get_notifications_sheet():
     """Retorna o objeto da aba de notificações."""
     return _get_sheet('Notificações')
 
-def _add_notification(notification_type, message_to_save, message_for_display=None, game_name=None):
+def _add_notification(notification_type, message_to_save, message_for_display=None, game_name=None, internal_link=None):
     """Adiciona uma nova notificação à planilha, evitando duplicatas recentes ou re-notificando promoções após um período.
         message_to_save: A mensagem completa com o marco (para desduplicação).
         message_for_display: A mensagem sem o marco (para exibição no frontend).
         game_name: O nome do jogo, usado para desduplicação de promoções.
+        internal_link: O link interno para navegação no frontend.
     """
     sheet = _get_notifications_sheet()
     if not sheet:
@@ -191,10 +193,11 @@ def _add_notification(notification_type, message_to_save, message_for_display=No
     final_message_to_save = message_to_save
     final_message_for_display = message_for_display if message_for_display is not None else message_to_save
 
-    row_data = [new_id, notification_type, final_message_to_save, timestamp, 'Não']
+    # Adiciona o internal_link à linha, se fornecido
+    row_data = [new_id, notification_type, final_message_to_save, timestamp, 'Não', internal_link if internal_link else '']
     sheet.append_row(row_data)
     _invalidate_cache('Notificações') # Invalida o cache de notificações após adicionar
-    print(f"DEBUG: Notificação adicionada: ID={new_id}, Tipo='{notification_type}', Mensagem='{final_message_to_save}' (Exibição: '{final_message_for_display}')")
+    print(f"DEBUG: Notificação adicionada: ID={new_id}, Tipo='{notification_type}', Mensagem='{final_message_to_save}' (Exibição: '{final_message_for_display}'), Link: '{internal_link}'")
     return {"success": True, "message": "Notificação adicionada com sucesso."}
 
 def get_all_notifications_for_frontend():
@@ -213,7 +216,8 @@ def get_all_notifications_for_frontend():
             'Tipo': notif.get('Tipo', ''),
             'Mensagem': display_message, # Usa a mensagem limpa para exibição
             'Data': notif.get('Data', ''),
-            'Lida': str(notif.get('Lida', 'Não'))
+            'Lida': str(notif.get('Lida', 'Não')),
+            'LinkInterno': notif.get('LinkInterno', '') # Inclui o link interno
         }
         processed_notifications.append(processed_notif)
     
@@ -221,7 +225,7 @@ def get_all_notifications_for_frontend():
 
     print(f"DEBUG: Total de notificações (lidas e não lidas) encontradas para o frontend: {len(processed_notifications)}")
     for i, notif in enumerate(processed_notifications[:5]):
-        print(f"DEBUG:   Notificação {notif['ID']} - Tipo: {notif['Tipo']}, Lida: '{notif['Lida']}', Mensagem Display: '{notif['Mensagem']}'")
+        print(f"DEBUG:   Notificação {notif['ID']} - Tipo: {notif['Tipo']}, Lida: '{notif['Lida']}', Mensagem Display: '{notif['Mensagem']}', Link: '{notif['LinkInterno']}'")
     return processed_notifications
 
 def mark_notification_as_read(notification_id):
@@ -344,9 +348,11 @@ def get_all_game_data():
         # --- MODIFICAÇÃO: Lógica para notificar conquistas do aplicativo ---
         for ach in completed_achievements:
             notification_message = f"Você desbloqueou a conquista: '{ach.get('Nome')}'!"
+            # Link interno para o modal de conquistas
+            internal_link = f"page=conquistas&modal=achievements&achId={ach.get('ID')}"
             # Verifica se já existe uma notificação para esta conquista específica
             if not any(n.get('Tipo') == "Conquista Desbloqueada" and n.get('Mensagem') == notification_message for n in existing_notifications):
-                _add_notification("Conquista Desbloqueada", notification_message)
+                _add_notification("Conquista Desbloqueada", notification_message, internal_link=internal_link)
         # --- FIM MODIFICAÇÃO ---
 
         # --- NOVO: Lógica para notificar lançamentos próximos da lista de desejos ---
@@ -390,9 +396,11 @@ def get_all_game_data():
                             
                             # Mensagem completa com o marco para desduplicação no backend
                             notification_message_with_milestone = f"{notification_display_message} (Marco: {milestone} dias)"
+                            # Link interno para o modal de detalhes do desejo
+                            internal_link = f"page=desejos&modal=wish-details&name={wish.get('Nome')}"
 
                             if not any(n.get('Tipo') == "Lançamento Próximo" and n.get('Mensagem') == notification_message_with_milestone for n in existing_notifications):
-                                _add_notification("Lançamento Próximo", notification_message_with_milestone, notification_display_message)
+                                _add_notification("Lançamento Próximo", notification_message_with_milestone, notification_display_message, internal_link=internal_link)
                                 print(f"DEBUG: Notificação de lançamento gerada para '{wish.get('Nome')}': {notification_message_with_milestone}")
                             break # Notifica apenas o marco mais próximo (maior milestone)
                 except ValueError:
@@ -430,12 +438,14 @@ def get_all_game_data():
                 promotion_found = False
                 if steam_current > 0 and (steam_current <= steam_lowest * 1.01): # Margem de 1%
                     notification_message = f"Promoção na Steam! '{wish_name}' por R${steam_current:.2f}."
-                    _add_notification("Promoção", notification_message, game_name=wish_name) # Passa game_name
+                    internal_link = f"page=desejos&modal=wish-details&name={wish_name}"
+                    _add_notification("Promoção", notification_message, game_name=wish_name, internal_link=internal_link) # Passa game_name e internal_link
                     promotion_found = True
                 
                 if psn_current > 0 and (psn_current <= psn_lowest * 1.01) and not promotion_found: # Evita duas notificações para o mesmo jogo se ambas as plataformas estiverem em promoção
                     notification_message = f"Promoção na PSN! '{wish_name}' por R${psn_current:.2f}."
-                    _add_notification("Promoção", notification_message, game_name=wish_name) # Passa game_name
+                    internal_link = f"page=desejos&modal=wish-details&name={wish_name}"
+                    _add_notification("Promoção", notification_message, game_name=wish_name, internal_link=internal_link) # Passa game_name e internal_link
             # FIM NOVO
         print("DEBUG: get_all_game_data finalizado com sucesso.")
         return {
@@ -813,3 +823,356 @@ def trigger_wishlist_scraper_action():
     except Exception as e:
         print(f"ERRO GENÉRICO: Erro ao acionar a Action: {e}")
         return {"success": False, "message": "Ocorreu um erro interno ao tentar acionar a action."}
+
+# --- NOVAS FUNÇÕES PARA SINCRONIZAÇÃO STEAM ---
+def _get_rawg_game_details(rawg_id):
+    """Busca detalhes de um jogo na RAWG, incluindo descrição e screenshots."""
+    if not Config.RAWG_API_KEY:
+        print("ERRO: Chave da API da RAWG não configurada.")
+        return {}
+    try:
+        url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
+        response = requests.get(url)
+        response.raise_for_status()
+        details = response.json()
+
+        description = details.get('description_raw', '')
+        translated_description = ""
+        if Config.DEEPL_API_KEY and description:
+            try:
+                translator = deepl.Translator(Config.DEEPL_API_KEY)
+                result = translator.translate_text(description, target_lang="PT-BR")
+                translated_description = result.text
+            except Exception as deepl_e:
+                print(f"AVISO: Erro ao traduzir descrição com DeepL: {deepl_e}")
+                translated_description = description
+        else:
+            translated_description = description
+
+        genres_pt = [g['name'] for g in details.get('genres', [])]
+        game_tags = details.get('tags') or []
+        for tag in game_tags:
+            if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
+                if "Soulslike" not in genres_pt:
+                    genres_pt.append("Soulslike")
+                break
+        
+        screenshots_list = [sc.get('image') for sc in details.get('short_screenshots', [])[:3]]
+
+        return {
+            'Descricao': translated_description,
+            'Metacritic': details.get('metacritic', ''),
+            'Screenshots': ', '.join(screenshots_list),
+            'Estilo': ', '.join([GENRE_TRANSLATIONS.get(g, g) for g in genres_pt]),
+            'Link': details.get('background_image', '') # Usar background_image como link da capa
+        }
+    except requests.exceptions.RequestException as e:
+        print(f"ERRO: Falha ao buscar detalhes do jogo RAWG ID {rawg_id}: {e}")
+        return {}
+    except Exception as e:
+        print(f"ERRO inesperado ao buscar detalhes RAWG: {e}")
+        return {}
+
+def get_steam_library_preview(steam_id):
+    """
+    Busca a biblioteca de jogos da Steam do usuário e compara com a planilha existente.
+    Retorna jogos novos e existentes com dados da Steam.
+    """
+    if not Config.STEAM_API_KEY:
+        return {"success": False, "message": "STEAM_API_KEY não configurada no servidor."}
+
+    try:
+        # API para obter a lista de jogos do usuário
+        steam_games_url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={Config.STEAM_API_KEY}&steamid={steam_id}&format=json&include_appinfo=1&include_played_free_games=1"
+        response = requests.get(steam_games_url)
+        response.raise_for_status()
+        steam_data = response.json()
+
+        owned_games = steam_data.get('response', {}).get('games', [])
+        
+        # Buscar jogos existentes na planilha para comparação
+        existing_games_sheet = _get_data_from_sheet('Jogos')
+        existing_game_names = {game.get('Nome').lower() for game in existing_games_sheet if game.get('Nome')}
+
+        new_games = []
+        existing_games_to_update = []
+
+        for steam_game in owned_games:
+            game_name = steam_game.get('name')
+            if not game_name:
+                continue
+
+            # Buscar RAWG ID para o jogo Steam
+            rawg_id = None
+            rawg_search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={game_name}&page_size=1"
+            rawg_response = requests.get(rawg_search_url)
+            if rawg_response.ok and rawg_response.json().get('results'):
+                rawg_id = rawg_response.json()['results'][0]['id']
+
+            game_info = {
+                'Nome': game_name,
+                'Plataforma': 'PC (Steam)',
+                'Tempo de Jogo': round(steam_game.get('playtime_forever', 0) / 60), # Convertendo minutos para horas
+                'Conquistas Obtidas': 0, # Será atualizado em um passo posterior se houver API de conquistas
+                'RAWG_ID': rawg_id,
+                'Status': 'Na Fila' # Status inicial para jogos importados
+            }
+
+            if game_name.lower() in existing_game_names:
+                existing_games_to_update.append(game_info)
+            else:
+                new_games.append(game_info)
+        
+        return {
+            "success": True,
+            "new_games": new_games,
+            "existing_games_to_update": existing_games_to_update
+        }
+
+    except requests.exceptions.RequestException as e:
+        print(f"ERRO DE CONEXÃO COM A API DA STEAM: {e}")
+        return {"success": False, "message": "Falha ao se comunicar com a API da Steam."}
+    except Exception as e:
+        print(f"ERRO INESPERADO ao obter prévia da biblioteca Steam: {e}")
+        traceback.print_exc()
+        return {"success": False, "message": "Ocorreu um erro interno no servidor."}
+
+def sync_steam_library(steam_id, selected_games_data):
+    """
+    Sincroniza os jogos selecionados da Steam com a planilha.
+    selected_games_data é uma lista de dicionários com 'Nome', 'RAWG_ID', 'Tempo de Jogo', etc.
+    """
+    if not Config.STEAM_API_KEY:
+        return {"success": False, "message": "STEAM_API_KEY não configurada no servidor."}
+
+    games_added = 0
+    games_updated = 0
+    errors = []
+
+    existing_games_sheet = _get_data_from_sheet('Jogos')
+    existing_game_map = {game.get('Nome').lower(): game for game in existing_games_sheet if game.get('Nome')}
+    
+    sheet = _get_sheet('Jogos')
+    if not sheet:
+        return {"success": False, "message": "Conexão com a planilha de jogos falhou."}
+    headers = sheet.row_values(1)
+    
+    # Mapeamento de colunas para facilitar a atualização
+    column_map = {header: i for i, header in enumerate(headers)}
+
+    for game_data_from_steam in selected_games_data:
+        game_name = game_data_from_steam.get('Nome')
+        rawg_id = game_data_from_steam.get('RAWG_ID')
+        steam_playtime = game_data_from_steam.get('Tempo de Jogo', 0) # Já em horas
+
+        if not game_name:
+            errors.append(f"Jogo sem nome na lista de sincronização: {game_data_from_steam}")
+            continue
+
+        existing_game = existing_game_map.get(game_name.lower())
+
+        try:
+            if existing_game:
+                # Jogo existente: atualizar Tempo de Jogo e Conquistas Obtidas (se houver)
+                # Preservar outros campos como Nota, Preço, Status, Platinado?, etc.
+                row_index = sheet.find(game_name).row # Encontra a linha pelo nome
+                current_row_values = sheet.row_values(row_index)
+                
+                updated_row_values = list(current_row_values) # Copia a linha existente
+
+                # Atualiza Tempo de Jogo
+                if 'Tempo de Jogo' in column_map:
+                    updated_row_values[column_map['Tempo de Jogo']] = steam_playtime
+                
+                # Se houver API de conquistas da Steam, buscar e atualizar aqui
+                # Por enquanto, mantém o valor existente ou 0
+                # if 'Conquistas Obtidas' in column_map:
+                #     updated_row_values[column_map['Conquistas Obtidas']] = new_steam_achievements_count
+
+                sheet.update(f'A{row_index}', [updated_row_values])
+                games_updated += 1
+                print(f"DEBUG: Jogo '{game_name}' atualizado (Tempo de Jogo).")
+
+            else:
+                # Novo jogo: buscar detalhes na RAWG e adicionar
+                full_game_data = {
+                    'Nome': game_name,
+                    'Plataforma': 'PC (Steam)',
+                    'Status': 'Na Fila',
+                    'Nota': '',
+                    'Preço': 0,
+                    'Tempo de Jogo': steam_playtime,
+                    'Conquistas Obtidas': 0,
+                    'Platinado?': 'Não',
+                    'Adquirido em': datetime.now().strftime("%Y-%m-%d"),
+                    'Início em': '',
+                    'Terminado em': '',
+                    'Conclusão': '',
+                    'Abandonado?': 'Não',
+                    'RAWG_ID': rawg_id,
+                    'Metacritic': '',
+                    'Descricao': '',
+                    'Screenshots': '',
+                    'Estilo': '',
+                    'Link': ''
+                }
+
+                if rawg_id:
+                    rawg_details = _get_rawg_game_details(rawg_id)
+                    full_game_data.update(rawg_details)
+                
+                # Garante que todos os headers estejam preenchidos, mesmo que vazios
+                row_to_append = [full_game_data.get(header, '') for header in headers]
+                sheet.append_row(row_to_append)
+                games_added += 1
+                print(f"DEBUG: Jogo '{game_name}' adicionado à biblioteca.")
+                _add_notification("Novo Jogo Adicionado", f"Você adicionou '{game_name}' à sua biblioteca via Steam Sync!")
+
+        except Exception as e:
+            errors.append(f"Erro ao processar jogo '{game_name}': {e}")
+            print(f"ERRO ao sincronizar jogo '{game_name}': {e}")
+            traceback.print_exc()
+
+    _invalidate_cache('Jogos') # Invalida o cache de jogos após a sincronização
+    
+    message = f"{games_added} jogos adicionados e {games_updated} jogos atualizados."
+    if errors:
+        message += f" Com {len(errors)} erros."
+        print("Erros durante a sincronização Steam:", errors)
+
+    return {"success": True, "message": message, "added": games_added, "updated": games_updated, "errors": errors}
+# --- FIM NOVAS FUNÇÕES PARA SINCRONIZAÇÃO STEAM ---
+
+# --- NOVA FUNÇÃO PARA HISTÓRICO DE PREÇOS ---
+def get_price_history(game_name):
+    """
+    Retorna o histórico de preços de um jogo da lista de desejos.
+    Espera que exista uma aba 'Historico de Preços' com as colunas:
+    'Nome do Jogo', 'Plataforma', 'Data', 'Preço'.
+    """
+    try:
+        history_sheet_data = _get_data_from_sheet('Historico de Preços')
+        if not history_sheet_data:
+            return []
+
+        # Filtra os registros para o jogo específico
+        game_history = [
+            record for record in history_sheet_data
+            if record.get('Nome do Jogo', '').lower() == game_name.lower()
+        ]
+        
+        # Opcional: ordenar por data, se não estiver garantido pela planilha
+        game_history.sort(key=lambda x: datetime.strptime(x['Data'], "%Y-%m-%d %H:%M:%S"))
+
+        return game_history
+    except Exception as e:
+        print(f"ERRO ao buscar histórico de preços para '{game_name}': {e}")
+        traceback.print_exc()
+        return []
+# --- FIM NOVA FUNÇÃO PARA HISTÓRICO DE PREÇOS ---
+
+# --- NOVA FUNÇÃO PARA SORTEAR JOGO ---
+def get_random_game(platform=None, style=None, min_metacritic=None, max_metacritic=None):
+    """
+    Retorna um jogo aleatório da biblioteca, excluindo status 'Platinado', 'Abandonado', 'Finalizado'.
+    Pode aplicar filtros opcionais: plataforma, estilo, min_metacritic, max_metacritic.
+    """
+    games_data = _get_data_from_sheet('Jogos')
+    if not games_data:
+        return None
+
+    # Filtrar jogos que não estão em status de "jogando" ou "na fila"
+    eligible_games = [
+        game for game in games_data
+        if game.get('Status') not in ['Platinado', 'Abandonado', 'Finalizado']
+    ]
+
+    # Aplicar filtros adicionais
+    if platform:
+        eligible_games = [game for game in eligible_games if game.get('Plataforma', '').lower() == platform.lower()]
+    
+    if style:
+        eligible_games = [
+            game for game in eligible_games
+            if game.get('Estilo') and style.lower() in game.get('Estilo', '').lower()
+        ]
+    
+    if min_metacritic is not None:
+        eligible_games = [
+            game for game in eligible_games
+            if game.get('Metacritic') and int(game.get('Metacritic')) >= min_metacritic
+        ]
+    
+    if max_metacritic is not None:
+        eligible_games = [
+            game for game in eligible_games
+            if game.get('Metacritic') and int(game.get('Metacritic')) <= max_metacritic
+        ]
+
+    if not eligible_games:
+        return None
+
+    # Sortear um jogo da lista filtrada
+    random_game = random.choice(eligible_games)
+    return random_game
+# --- FIM NOVA FUNÇÃO PARA SORTEAR JOGO ---
+
+# --- NOVA FUNÇÃO PARA JOGOS SIMILARES ---
+def get_similar_games(rawg_id):
+    """
+    Busca jogos similares a um determinado RAWG_ID, excluindo jogos já possuídos.
+    """
+    if not Config.RAWG_API_KEY:
+        return {"success": False, "message": "Chave da API da RAWG não configurada."}
+
+    try:
+        # Tenta buscar jogos da mesma série primeiro
+        series_url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
+        response = requests.get(series_url)
+        response.raise_for_status()
+        series_data = response.json().get('results', [])
+        
+        # Se não houver jogos na série, busca jogos sugeridos
+        if not series_data:
+            suggested_url = f"https://api.rawg.io/api/games/{rawg_id}/suggested?key={Config.RAWG_API_KEY}"
+            response = requests.get(suggested_url)
+            response.raise_for_status()
+            similar_rawg_games = response.json().get('results', [])
+        else:
+            similar_rawg_games = series_data
+
+        # Obter jogos da biblioteca do usuário para filtrar
+        games_data = _get_data_from_sheet('Jogos')
+        owned_game_names_lower = {game.get('Nome', '').lower() for game in games_data}
+
+        filtered_similar_games = []
+        for game in similar_rawg_games:
+            game_name = game.get('name')
+            if not game_name or game_name.lower() in owned_game_names_lower:
+                continue # Ignora jogos sem nome ou já possuídos
+
+            genres_pt = [g['name'] for g in game.get('genres', [])]
+            game_tags = game.get('tags') or []
+            for tag in game_tags:
+                if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
+                    if "Soulslike" not in genres_pt:
+                        genres_pt.append("Soulslike")
+                    break
+
+            filtered_similar_games.append({
+                'id': game.get('id'),
+                'name': game_name,
+                'background_image': game.get('background_image'),
+                'styles': ', '.join([GENRE_TRANSLATIONS.get(g, g) for g in genres_pt]),
+                'is_owned': game_name.lower() in owned_game_names_lower # Para indicar se o usuário já tem o jogo
+            })
+        
+        return {"success": True, "similar_games": filtered_similar_games[:5]} # Limita a 5 jogos similares
+    except requests.exceptions.RequestException as e:
+        print(f"ERRO DE CONEXÃO COM A API DA RAWG ao buscar jogos similares: {e}")
+        return {"success": False, "message": "Falha ao se comunicar com a API da RAWG para jogos similares."}
+    except Exception as e:
+        print(f"ERRO INESPERADO ao buscar jogos similares: {e}")
+        traceback.print_exc()
+        return {"success": False, "message": "Ocorreu um erro interno no servidor."}
+# --- FIM NOVA FUNÇÃO PARA JOGOS SIMILARES ---
