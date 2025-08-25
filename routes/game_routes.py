@@ -172,7 +172,6 @@ def delete_item(list_type, item_name):
 def get_notifications():
     """Retorna todas as notificações (lidas e não lidas) para o usuário."""
     try:
-        # MODIFICAÇÃO AQUI: Chamar a nova função que retorna TODAS as notificações
         notifications = game_service.get_all_notifications_for_frontend()
         return jsonify(notifications)
     except Exception as e:
@@ -191,9 +190,35 @@ def mark_notification_read(notification_id):
         print(f"!!! ERRO AO MARCAR NOTIFICAÇÃO COMO LIDA: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro ao marcar notificação como lida.", "detalhes_tecnicos": str(e)}), 500
-# --- FIM DAS NOVAS ROTAS ---
 
-# Adicione esta nova rota no final do arquivo
+# --- NOVA ROTA PARA SORTEAR JOGO ---
+@game_bp.route('/random', methods=['GET'])
+@jwt_required()
+def get_random_game_route():
+    """
+    Sorteia um jogo aleatório com base em filtros opcionais da query string.
+    Ex: /api/games/random?plataforma=Computador&estilo=RPG&metacritic_min=80
+    """
+    try:
+        # Extrai os parâmetros de filtro da URL (query string)
+        plataforma = request.args.get('plataforma')
+        estilo = request.args.get('estilo')
+        metacritic_min = request.args.get('metacritic_min')
+        metacritic_max = request.args.get('metacritic_max')
+        
+        # Chama o serviço para obter o jogo sorteado
+        random_game = game_service.get_random_game(plataforma, estilo, metacritic_min, metacritic_max)
+        
+        if random_game:
+            return jsonify(random_game)
+        
+        return jsonify({'message': 'Nenhum jogo encontrado com os critérios especificados'}), 404
+    except Exception as e:
+        print(f"!!! ERRO NA ROTA /random: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Ocorreu um erro interno ao sortear o jogo.", "detalhes_tecnicos": str(e)}), 500
+# --- FIM DA NOVA ROTA ---
+
 @game_bp.route('/wishlist/update-prices', methods=['POST'])
 @jwt_required()
 def update_wishlist_prices():
