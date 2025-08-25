@@ -12,7 +12,7 @@ import pytz
 import os
 import random # Importado para a funcionalidade de sortear jogo
 
-# NOVO: Dicionário de tradução de gêneros, movido para cá para ser acessível
+# Dicionário de tradução de gêneros, movido para o topo do arquivo para ser acessível globalmente
 GENRE_TRANSLATIONS = {
     "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
     "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
@@ -860,11 +860,13 @@ def _get_rawg_game_details(rawg_id):
         else:
             translated_description = description
 
-        genres_pt = [g['name'] for g in details.get('genres', [])]
+        genres_rawg = [g['name'] for g in details.get('genres', [])] # Nomes dos gêneros da RAWG
+        genres_pt = [GENRE_TRANSLATIONS.get(g, g) for g in genres_rawg] # Traduz para PT-BR
+        
         game_tags = details.get('tags') or []
         for tag in game_tags:
             if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
-                if "Soulslike" not in genres_pt:
+                if "Soulslike" not in genres_pt: # Adiciona apenas se já não estiver presente
                     genres_pt.append("Soulslike")
                 break
         
@@ -874,7 +876,7 @@ def _get_rawg_game_details(rawg_id):
             'Descricao': translated_description,
             'Metacritic': details.get('metacritic', ''),
             'Screenshots': ', '.join(screenshots_list),
-            'Estilo': ', '.join([GENRE_TRANSLATIONS.get(g, g) for g in genres_pt]),
+            'Estilo': ', '.join(genres_pt), # Usa os gêneros traduzidos
             'Link': details.get('background_image', '') # Usar background_image como link da capa
         }
     except requests.exceptions.RequestException as e:
@@ -1071,6 +1073,7 @@ def get_price_history(game_name):
     try:
         history_sheet_data = _get_data_from_sheet('Historico de Preços')
         if not history_sheet_data:
+            print(f"DEBUG: Planilha 'Historico de Preços' vazia ou não encontrada para '{game_name}'.")
             return []
 
         # Filtra os registros para o jogo específico
@@ -1097,6 +1100,7 @@ def get_random_game(platform=None, style=None, min_metacritic=None, max_metacrit
     """
     games_data = _get_data_from_sheet('Jogos')
     if not games_data:
+        print("DEBUG: Nenhuns dados de jogos encontrados para sortear.")
         return None
 
     # Filtrar jogos que não estão em status de "jogando" ou "na fila"
@@ -1104,34 +1108,41 @@ def get_random_game(platform=None, style=None, min_metacritic=None, max_metacrit
         game for game in games_data
         if game.get('Status') not in ['Platinado', 'Abandonado', 'Finalizado']
     ]
+    print(f"DEBUG: Jogos elegíveis após filtro de status: {len(eligible_games)}")
 
     # Aplicar filtros adicionais
-    if platform and platform != 'all':
+    if platform and platform.lower() != 'all':
         eligible_games = [game for game in eligible_games if game.get('Plataforma', '').lower() == platform.lower()]
+        print(f"DEBUG: Jogos elegíveis após filtro de plataforma ('{platform}'): {len(eligible_games)}")
     
-    if style and style != 'all':
+    if style and style.lower() != 'all':
         eligible_games = [
             game for game in eligible_games
             if game.get('Estilo') and style.lower() in game.get('Estilo', '').lower()
         ]
+        print(f"DEBUG: Jogos elegíveis após filtro de estilo ('{style}'): {len(eligible_games)}")
     
     if min_metacritic is not None:
         eligible_games = [
             game for game in eligible_games
-            if game.get('Metacritic') and int(game.get('Metacritic')) >= min_metacritic
+            if game.get('Metacritic') and str(game.get('Metacritic')).isdigit() and int(game.get('Metacritic')) >= min_metacritic
         ]
+        print(f"DEBUG: Jogos elegíveis após filtro de Metacritic mínimo ('{min_metacritic}'): {len(eligible_games)}")
     
     if max_metacritic is not None:
         eligible_games = [
             game for game in eligible_games
-            if game.get('Metacritic') and int(game.get('Metacritic')) <= max_metacritic
+            if game.get('Metacritic') and str(game.get('Metacritic')).isdigit() and int(game.get('Metacritic')) <= max_metacritic
         ]
+        print(f"DEBUG: Jogos elegíveis após filtro de Metacritic máximo ('{max_metacritic}'): {len(eligible_games)}")
 
     if not eligible_games:
+        print("DEBUG: Nenhuns jogos elegíveis após a aplicação de todos os filtros.")
         return None
 
     # Sortear um jogo da lista filtrada
     random_game = random.choice(eligible_games)
+    print(f"DEBUG: Jogo sorteado: {random_game.get('Nome')}")
     return random_game
 # --- FIM NOVA FUNÇÃO PARA SORTEAR JOGO ---
 
@@ -1141,9 +1152,11 @@ def get_similar_games(rawg_id):
     Busca jogos similares a um determinado RAWG_ID, excluindo jogos já possuídos.
     """
     if not Config.RAWG_API_KEY:
+        print("ERRO: Chave da API da RAWG não configurada.")
         return {"success": False, "message": "Chave da API da RAWG não configurada."}
     
     if not rawg_id: # Adiciona verificação para RAWG_ID nulo ou vazio
+        print("AVISO: RAWG ID não fornecido para buscar jogos similares.")
         return {"success": False, "message": "RAWG ID não fornecido para buscar jogos similares."}
 
     try:
@@ -1177,7 +1190,10 @@ def get_similar_games(rawg_id):
             if is_owned:
                 continue # Se já possui, não inclui na lista de similares a serem exibidos
 
-            genres_pt = [g['name'] for g in game.get('genres', [])]
+            genres_rawg = [g['name'] for g in game.get('genres', [])]
+            genres_pt = [GENRE_TRANSLATIONS.get(g, g) for g in genres_rawg] # Usa o dicionário global
+            
+            # Adiciona a tag Soulslike se aplicável
             game_tags = game.get('tags') or []
             for tag in game_tags:
                 if tag.get('language') == 'eng' and tag.get('slug') == 'souls-like':
@@ -1189,7 +1205,7 @@ def get_similar_games(rawg_id):
                 'id': game.get('id'),
                 'name': game_name,
                 'background_image': game.get('background_image'),
-                'styles': ', '.join([GENRE_TRANSLATIONS.get(g, g) for g in genres_pt]),
+                'styles': ', '.join(genres_pt), # Usa os gêneros traduzidos
                 'is_owned': is_owned # Mantém a flag, embora não será usada para filtrar aqui
             })
         
