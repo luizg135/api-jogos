@@ -27,6 +27,3 @@ class Config:
     
     # Nova chave para a API do DeepL
     DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
-
-    # NOVA CHAVE: API Key para a Steam Web API
-    STEAM_API_KEY = os.environ.get('STEAM_API_KEY')
