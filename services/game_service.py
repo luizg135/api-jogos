@@ -705,7 +705,7 @@ def delete_game_from_sheet(game_name):
     except Exception as e:
         print(f"ERRO: Erro ao deletar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao deletar jogo."}
-        
+
 def update_wish_in_sheet(wish_name, updated_data):
     try:
         sheet = _get_sheet('Desejos')
@@ -904,10 +904,11 @@ def get_steam_library_preview(steam_id):
 
             # Buscar RAWG ID para o jogo Steam
             rawg_id = None
-            rawg_search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={game_name}&page_size=1"
-            rawg_response = requests.get(rawg_search_url)
-            if rawg_response.ok and rawg_response.json().get('results'):
-                rawg_id = rawg_response.json()['results'][0]['id']
+            if Config.RAWG_API_KEY: # Só tenta buscar RAWG se a chave estiver configurada
+                rawg_search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={game_name}&page_size=1"
+                rawg_response = requests.get(rawg_search_url)
+                if rawg_response.ok and rawg_response.json().get('results'):
+                    rawg_id = rawg_response.json()['results'][0]['id']
 
             game_info = {
                 'Nome': game_name,
@@ -975,7 +976,13 @@ def sync_steam_library(steam_id, selected_games_data):
             if existing_game:
                 # Jogo existente: atualizar Tempo de Jogo e Conquistas Obtidas (se houver)
                 # Preservar outros campos como Nota, Preço, Status, Platinado?, etc.
-                row_index = sheet.find(game_name).row # Encontra a linha pelo nome
+                try:
+                    cell = sheet.find(game_name)
+                    row_index = cell.row
+                except gspread.exceptions.CellNotFound:
+                    errors.append(f"Jogo '{game_name}' não encontrado na planilha para atualização.")
+                    continue
+
                 current_row_values = sheet.row_values(row_index)
                 
                 updated_row_values = list(current_row_values) # Copia a linha existente
@@ -1088,10 +1095,10 @@ def get_random_game(platform=None, style=None, min_metacritic=None, max_metacrit
     ]
 
     # Aplicar filtros adicionais
-    if platform:
+    if platform and platform != 'all':
         eligible_games = [game for game in eligible_games if game.get('Plataforma', '').lower() == platform.lower()]
     
-    if style:
+    if style and style != 'all':
         eligible_games = [
             game for game in eligible_games
             if game.get('Estilo') and style.lower() in game.get('Estilo', '').lower()
@@ -1124,6 +1131,9 @@ def get_similar_games(rawg_id):
     """
     if not Config.RAWG_API_KEY:
         return {"success": False, "message": "Chave da API da RAWG não configurada."}
+    
+    if not rawg_id: # Adiciona verificação para RAWG_ID nulo ou vazio
+        return {"success": False, "message": "RAWG ID não fornecido para buscar jogos similares."}
 
     try:
         # Tenta buscar jogos da mesma série primeiro
@@ -1148,8 +1158,13 @@ def get_similar_games(rawg_id):
         filtered_similar_games = []
         for game in similar_rawg_games:
             game_name = game.get('name')
-            if not game_name or game_name.lower() in owned_game_names_lower:
-                continue # Ignora jogos sem nome ou já possuídos
+            if not game_name:
+                continue # Ignora jogos sem nome
+
+            # Verifica se o jogo já está na biblioteca do usuário
+            is_owned = game_name.lower() in owned_game_names_lower
+            if is_owned:
+                continue # Se já possui, não inclui na lista de similares a serem exibidos
 
             genres_pt = [g['name'] for g in game.get('genres', [])]
             game_tags = game.get('tags') or []
@@ -1164,7 +1179,7 @@ def get_similar_games(rawg_id):
                 'name': game_name,
                 'background_image': game.get('background_image'),
                 'styles': ', '.join([GENRE_TRANSLATIONS.get(g, g) for g in genres_pt]),
-                'is_owned': game_name.lower() in owned_game_names_lower # Para indicar se o usuário já tem o jogo
+                'is_owned': is_owned # Mantém a flag, embora não será usada para filtrar aqui
             })
         
         return {"success": True, "similar_games": filtered_similar_games[:5]} # Limita a 5 jogos similares
