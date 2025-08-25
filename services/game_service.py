@@ -12,6 +12,17 @@ import pytz
 import os
 import random # Importado para a funcionalidade de sortear jogo
 
+# NOVO: Dicionário de tradução de gêneros, movido para cá para ser acessível
+GENRE_TRANSLATIONS = {
+    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
+    "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
+    "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
+    "Arcade": "Arcade", "Plataforma": "Plataforma", "Racing": "Corrida",
+    "Massively Multiplayer": "MMO", "Sports": "Esportes", "Fighting": "Luta",
+    "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
+    "Card": "Cartas", "Soulslike": "Soulslike" # Adicionado Soulslike para consistência
+}
+
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
 _data_cache = {}
@@ -705,7 +716,7 @@ def delete_game_from_sheet(game_name):
     except Exception as e:
         print(f"ERRO: Erro ao deletar jogo: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao deletar jogo."}
-
+        
 def update_wish_in_sheet(wish_name, updated_data):
     try:
         sheet = _get_sheet('Desejos')
