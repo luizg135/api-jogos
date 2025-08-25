@@ -12,9 +12,13 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # Configuração do Flask-CORS
-# Permite CORS para todas as rotas de todas as origens.
-# Substituímos o "*" pelo domínio específico do seu frontend no Netlify.
-CORS(app, resources={r"/api/*": {"origins": "https://savepoint-hub.netlify.app"}})
+# Aplica CORS a todas as rotas da aplicação Flask.
+# Para produção, é recomendado especificar as origens permitidas.
+# Exemplo para permitir apenas o seu frontend do Netlify:
+CORS(app, origins="https://savepoint-hub.netlify.app")
+# Se precisar de múltiplas origens (ex: local e Netlify):
+# CORS(app, origins=["https://savepoint-hub.netlify.app", "http://localhost:8000"])
+
 
 # Configuração do JWT
 jwt = JWTManager(app)
