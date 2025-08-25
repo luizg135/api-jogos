@@ -311,7 +311,10 @@ def _check_for_promotions(wish, existing_notifications, all_history_data):
     """
     game_name = wish.get('Nome', 'Um jogo')
     brasilia_tz = pytz.timezone('America/Sao_Paulo')
-    today = datetime.now(brasilia_tz).date()
+    today_date = datetime.now(brasilia_tz).date() # Apenas a data
+    
+    # Convertendo today_date para Timestamp para comparação consistente com datetime64[ns]
+    today_timestamp = pd.Timestamp(today_date)
 
     promotion_found = False
 
@@ -344,7 +347,8 @@ def _check_for_promotions(wish, existing_notifications, all_history_data):
             return
         
         # Últimos 30 dias
-        last_30_days_data = history_df[history_df['Data'] >= (today - timedelta(days=30))]
+        # Comparar com today_timestamp para consistência
+        last_30_days_data = history_df[history_df['Data'] >= (today_timestamp - timedelta(days=30))]
         if not last_30_days_data.empty:
             average_price_30_days = last_30_days_data['Preço'].mean()
             if current_price_float <= average_price_30_days * 0.80: # 20% abaixo da média
@@ -355,8 +359,9 @@ def _check_for_promotions(wish, existing_notifications, all_history_data):
                 return
 
         # Queda em relação à semana anterior
-        one_week_ago = today - timedelta(days=7)
-        price_one_week_ago_df = history_df[history_df['Data'].dt.date == one_week_ago]
+        one_week_ago_timestamp = today_timestamp - timedelta(days=7)
+        # Comparar com one_week_ago_timestamp para consistência
+        price_one_week_ago_df = history_df[history_df['Data'] == one_week_ago_timestamp]
         if not price_one_week_ago_df.empty:
             price_one_week_ago = price_one_week_ago_df['Preço'].iloc[-1] # Último preço registrado uma semana atrás
             if current_price_float <= price_one_week_ago * 0.90: # Queda de 10% ou mais
