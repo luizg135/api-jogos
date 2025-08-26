@@ -663,10 +663,10 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares com máxima precisão, combinando todos os gêneros e até 10 tags,
-    ordenando por Metacritic e filtrando para PC, PS5 e PS4.
+    Busca jogos similares com máxima precisão, usando a ordenação por relevância
+    padrão da RAWG API.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V6 - Máxima Precisão) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V7 - Ordenação por Relevância) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     if not Config.RAWG_API_KEY:
@@ -676,7 +676,6 @@ def get_similar_games(rawg_id):
     try:
         # Passo 1: Buscar os detalhes do jogo original.
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
-        print(f"[DEBUG] Buscando detalhes do jogo original na URL: {game_details_url}")
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
         game_data = game_response.json()
@@ -690,7 +689,7 @@ def get_similar_games(rawg_id):
         relevant_tags = [
             t.get('slug') for t in tags 
             if t.get('slug') and t.get('language') == 'eng' and 'steam' not in t.get('slug') and 'epic' not in t.get('slug')
-        ][:10] # AUMENTADO PARA 10 TAGS
+        ][:10]
         
         if not genre_slugs and not relevant_tags:
             print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gêneros ou tags para a busca.")
@@ -701,7 +700,7 @@ def get_similar_games(rawg_id):
         tags_query_param = ",".join(relevant_tags)
         
         # IDs das plataformas: 4=PC, 187=PS5, 18=PS4
-        platform_filter = "4,187,18" # REMOVIDO PS3
+        platform_filter = "4,187,18"
         
         similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=20&platforms={platform_filter}"
         
@@ -710,7 +709,8 @@ def get_similar_games(rawg_id):
         if tags_query_param:
             similar_url += f"&tags={tags_query_param}"
             
-        similar_url += "&ordering=-metacritic"
+        # --- MUDANÇA PRINCIPAL: A LINHA DE ORDENAÇÃO FOI REMOVIDA ---
+        # similar_url += "&ordering=-metacritic" 
 
         print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
         similar_response = requests.get(similar_url)
