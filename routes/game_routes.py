@@ -4,6 +4,7 @@ from services import game_service
 import traceback
 import requests
 from config import Config
+from services.game_service import GENRE_TRANSLATIONS
 
 game_bp = Blueprint('games', __name__)
 
