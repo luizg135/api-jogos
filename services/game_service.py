@@ -663,10 +663,10 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares com máxima precisão, usando a ordenação por relevância
-    padrão da RAWG API.
+    Busca jogos similares e ordena a lista para que os jogos
+    já presentes na biblioteca do usuário apareçam primeiro.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V7 - Ordenação por Relevância) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V9 - Priorizando Biblioteca) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     if not Config.RAWG_API_KEY:
@@ -680,16 +680,16 @@ def get_similar_games(rawg_id):
         game_response.raise_for_status()
         game_data = game_response.json()
         
-        # Extrai TODOS os Gêneros
+        # Extrai os 2 Gêneros mais relevantes
         genres = game_data.get('genres', [])
-        genre_slugs = [g.get('slug') for g in genres if g.get('slug')]
+        genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')]
         
-        # Extrai as 10 Tags mais relevantes
+        # Extrai as 5 Tags mais relevantes
         tags = game_data.get('tags', [])
         relevant_tags = [
             t.get('slug') for t in tags 
             if t.get('slug') and t.get('language') == 'eng' and 'steam' not in t.get('slug') and 'epic' not in t.get('slug')
-        ][:10]
+        ][:5]
         
         if not genre_slugs and not relevant_tags:
             print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gêneros ou tags para a busca.")
@@ -709,8 +709,7 @@ def get_similar_games(rawg_id):
         if tags_query_param:
             similar_url += f"&tags={tags_query_param}"
             
-        # --- MUDANÇA PRINCIPAL: A LINHA DE ORDENAÇÃO FOI REMOVIDA ---
-        # similar_url += "&ordering=-metacritic" 
+        similar_url += "&ordering=-released"
 
         print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
         similar_response = requests.get(similar_url)
@@ -746,7 +745,11 @@ def get_similar_games(rawg_id):
                     'in_library': in_library
                 })
         
-        print(f"[DEBUG] Encontrados {len(similar_games_processed)} jogos similares após o filtro.")
+        # --- MUDANÇA PRINCIPAL: ORDENAÇÃO FINAL ---
+        # A função sort() com a chave lambda e reverse=True coloca todos os itens com 'in_library': True no início da lista.
+        similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
+        
+        print(f"[DEBUG] Encontrados e reordenados {len(similar_games_processed)} jogos similares.")
         print(f"--- FIM DA BUSCA DE JOGOS SIMILARES ---\n")
         return similar_games_processed[:10]
 
