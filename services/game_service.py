@@ -663,10 +663,10 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares combinando múltiplos gêneros e tags para fornecer
-    recomendações mais precisas e variadas.
+    Busca jogos similares combinando múltiplos gêneros e tags, e ordenando
+    por Metacritic para fornecer recomendações mais precisas e relevantes.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V3) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V4 - Precisão Aprimorada) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     if not Config.RAWG_API_KEY:
@@ -681,31 +681,35 @@ def get_similar_games(rawg_id):
         game_response.raise_for_status()
         game_data = game_response.json()
         
-        # Extrai Gêneros
+        # Extrai os 2 Gêneros mais relevantes
         genres = game_data.get('genres', [])
-        genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')] # Pega até 2 gêneros
+        genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')]
         
-        # Extrai Tags (as mais relevantes, que não são de plataforma/loja)
+        # Extrai as 5 Tags mais relevantes (filtrando as que não ajudam)
         tags = game_data.get('tags', [])
-        # Filtra tags irrelevantes e pega até as 3 tags mais relevantes
         relevant_tags = [
             t.get('slug') for t in tags 
             if t.get('slug') and t.get('language') == 'eng' and 'steam' not in t.get('slug') and 'epic' not in t.get('slug')
-        ][:3]
+        ][:5]
         
         if not genre_slugs and not relevant_tags:
             print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gêneros ou tags para a busca.")
             return []
 
-        # Monta a URL da API combinando gêneros e tags
+        # Monta a URL da API combinando gêneros, tags e ordenação por Metacritic
         genres_query_param = ",".join(genre_slugs)
         tags_query_param = ",".join(relevant_tags)
         
-        similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=11"
+        # Aumentamos o page_size para ter mais resultados para filtrar
+        similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=20"
+        
         if genres_query_param:
             similar_url += f"&genres={genres_query_param}"
         if tags_query_param:
             similar_url += f"&tags={tags_query_param}"
+            
+        # --- A GRANDE MUDANÇA: ORDENAÇÃO ---
+        similar_url += "&ordering=-metacritic"
 
         print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
         similar_response = requests.get(similar_url)
