@@ -663,10 +663,10 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares e ordena a lista para que os jogos
-    já presentes na biblioteca do usuário apareçam primeiro.
+    Busca jogos similares combinando gêneros e tags, e ordenando por
+    popularidade na plataforma RAWG para máxima relevância.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V9 - Priorizando Biblioteca) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V10 - Ordenação por Popularidade) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     if not Config.RAWG_API_KEY:
@@ -680,11 +680,11 @@ def get_similar_games(rawg_id):
         game_response.raise_for_status()
         game_data = game_response.json()
         
-        # Extrai os 2 Gêneros mais relevantes
+        # Extrai os 2 Gêneros mais relevantes para manter o foco
         genres = game_data.get('genres', [])
         genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')]
         
-        # Extrai as 5 Tags mais relevantes
+        # Extrai as 5 Tags mais relevantes para refinar a busca
         tags = game_data.get('tags', [])
         relevant_tags = [
             t.get('slug') for t in tags 
@@ -709,7 +709,8 @@ def get_similar_games(rawg_id):
         if tags_query_param:
             similar_url += f"&tags={tags_query_param}"
             
-        similar_url += "&ordering=-released"
+        # --- MUDANÇA FINAL: ORDENAÇÃO POR POPULARIDADE ---
+        similar_url += "&ordering=-added"
 
         print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
         similar_response = requests.get(similar_url)
@@ -745,8 +746,6 @@ def get_similar_games(rawg_id):
                     'in_library': in_library
                 })
         
-        # --- MUDANÇA PRINCIPAL: ORDENAÇÃO FINAL ---
-        # A função sort() com a chave lambda e reverse=True coloca todos os itens com 'in_library': True no início da lista.
         similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
         
         print(f"[DEBUG] Encontrados e reordenados {len(similar_games_processed)} jogos similares.")
