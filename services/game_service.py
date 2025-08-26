@@ -644,35 +644,42 @@ def get_similar_games(rawg_id):
     Busca jogos similares com base em múltiplos gêneros para fornecer
     recomendações mais precisas e variadas.
     """
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES ---")
+    print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
+
     if not Config.RAWG_API_KEY:
-        print("AVISO: Chave da API da RAWG não configurada.")
+        print("[AVISO] Chave da API da RAWG não configurada.")
         return []
 
     try:
         # Passo 1: Buscar os detalhes do jogo original para descobrir seus gêneros.
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
+        print(f"[DEBUG] Buscando detalhes do jogo original na URL: {game_details_url}")
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
         game_data = game_response.json()
         
         genres = game_data.get('genres', [])
         if not genres:
-            print(f"AVISO: Jogo com RAWG ID {rawg_id} não possui gênero definido.")
+            print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gênero definido.")
             return []
 
         # NOVA LÓGICA: Pega os slugs de até 3 gêneros e os une com vírgulas.
         genre_slugs = [g.get('slug') for g in genres[:3] if g.get('slug')]
         if not genre_slugs:
+            print(f"[AVISO] Não foi possível extrair slugs de gênero para o jogo com RAWG ID {rawg_id}.")
             return []
         genres_query_param = ",".join(genre_slugs)
+        print(f"[DEBUG] Parâmetro de busca por gênero montado: '{genres_query_param}'")
 
         # Passo 2: Buscar outros jogos com base nesses gêneros.
         similar_url = f"https://api.rawg.io/api/games?genres={genres_query_param}&key={Config.RAWG_API_KEY}&page_size=10"
+        print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
         similar_response = requests.get(similar_url)
         similar_response.raise_for_status()
         rawg_data = similar_response.json()
 
-        # Passo 3: Obter a biblioteca de jogos do usuário para filtrar.
+        # O restante do código permanece o mesmo...
         user_games_data = _get_data_from_sheet('Jogos')
         user_games_df = pd.DataFrame(user_games_data)
         
@@ -685,12 +692,10 @@ def get_similar_games(rawg_id):
             finished_games_names = []
             library_games_names = []
 
-        # Passo 4: Processar e retornar a lista de jogos similares.
         similar_games_processed = []
         for game in rawg_data.get('results', []):
             game_name_lower = game.get('name', '').lower()
             
-            # Não mostra o próprio jogo na lista de similares nem os já finalizados
             if game.get('id') != rawg_id and game_name_lower not in finished_games_names:
                 genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
                 in_library = game_name_lower in library_games_names
@@ -703,7 +708,8 @@ def get_similar_games(rawg_id):
                     'in_library': in_library
                 })
         
-        # Limita o resultado final a 10 jogos, caso a API retorne mais
+        print(f"[DEBUG] Encontrados {len(similar_games_processed)} jogos similares após o filtro.")
+        print(f"--- FIM DA BUSCA DE JOGOS SIMILARES ---\n")
         return similar_games_processed[:10]
 
     except requests.exceptions.RequestException as e:
