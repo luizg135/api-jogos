@@ -663,10 +663,10 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares combinando múltiplos gêneros e tags, e ordenando
-    por Metacritic para fornecer recomendações mais precisas e relevantes.
+    Busca jogos similares com máxima precisão, combinando todos os gêneros e até 10 tags,
+    ordenando por Metacritic e filtrando para PC, PS5 e PS4.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V4 - Precisão Aprimorada) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V6 - Máxima Precisão) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     if not Config.RAWG_API_KEY:
@@ -674,41 +674,42 @@ def get_similar_games(rawg_id):
         return []
 
     try:
-        # Passo 1: Buscar os detalhes do jogo original para descobrir seus gêneros e tags.
+        # Passo 1: Buscar os detalhes do jogo original.
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
         print(f"[DEBUG] Buscando detalhes do jogo original na URL: {game_details_url}")
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
         game_data = game_response.json()
         
-        # Extrai os 2 Gêneros mais relevantes
+        # Extrai TODOS os Gêneros
         genres = game_data.get('genres', [])
-        genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')]
+        genre_slugs = [g.get('slug') for g in genres if g.get('slug')]
         
-        # Extrai as 5 Tags mais relevantes (filtrando as que não ajudam)
+        # Extrai as 10 Tags mais relevantes
         tags = game_data.get('tags', [])
         relevant_tags = [
             t.get('slug') for t in tags 
             if t.get('slug') and t.get('language') == 'eng' and 'steam' not in t.get('slug') and 'epic' not in t.get('slug')
-        ][:5]
+        ][:10] # AUMENTADO PARA 10 TAGS
         
         if not genre_slugs and not relevant_tags:
             print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gêneros ou tags para a busca.")
             return []
 
-        # Monta a URL da API combinando gêneros, tags e ordenação por Metacritic
+        # Monta a URL da API
         genres_query_param = ",".join(genre_slugs)
         tags_query_param = ",".join(relevant_tags)
         
-        # Aumentamos o page_size para ter mais resultados para filtrar
-        similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=20"
+        # IDs das plataformas: 4=PC, 187=PS5, 18=PS4
+        platform_filter = "4,187,18" # REMOVIDO PS3
+        
+        similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=20&platforms={platform_filter}"
         
         if genres_query_param:
             similar_url += f"&genres={genres_query_param}"
         if tags_query_param:
             similar_url += f"&tags={tags_query_param}"
             
-        # --- A GRANDE MUDANÇA: ORDENAÇÃO ---
         similar_url += "&ordering=-metacritic"
 
         print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
@@ -733,7 +734,6 @@ def get_similar_games(rawg_id):
         for game in rawg_data.get('results', []):
             game_name_lower = game.get('name', '').lower()
             
-            # Não mostra o próprio jogo na lista de similares nem os já finalizados
             if game.get('id') != rawg_id and game_name_lower not in finished_games_names:
                 genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
                 in_library = game_name_lower in library_games_names
