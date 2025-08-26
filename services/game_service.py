@@ -663,10 +663,10 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares usando um algoritmo de pontuação ponderada que considera
-    série, desenvolvedor, gêneros e tags para máxima relevância.
+    Busca jogos similares combinando gêneros e tags, e ordenando por
+    popularidade na plataforma RAWG para máxima relevância.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V11 - Algoritmo Ponderado) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V10 - Ordenação por Popularidade) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     if not Config.RAWG_API_KEY:
@@ -674,69 +674,54 @@ def get_similar_games(rawg_id):
         return []
 
     try:
-        # --- PASSO 1: Deconstruir o jogo original ---
+        # Passo 1: Buscar os detalhes do jogo original.
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
         game_data = game_response.json()
-
-        # Extrai os dados chave do jogo original
-        original_game_name = game_data.get('name', '')
-        genre_slugs = [g.get('slug') for g in game_data.get('genres', [])[:3] if g.get('slug')]
-        tags_slugs = [t.get('slug') for t in game_data.get('tags', [])[:10] if t.get('slug')]
-        developer_slugs = [d.get('slug') for d in game_data.get('developers', [])[:1] if d.get('slug')]
         
-        # Dicionário para armazenar os jogos encontrados e suas pontuações
-        similar_games_scores = {}
+        # Extrai os 2 Gêneros mais relevantes para manter o foco
+        genres = game_data.get('genres', [])
+        genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')]
+        
+        # Extrai as 5 Tags mais relevantes para refinar a busca
+        tags = game_data.get('tags', [])
+        relevant_tags = [
+            t.get('slug') for t in tags 
+            if t.get('slug') and t.get('language') == 'eng' and 'steam' not in t.get('slug') and 'epic' not in t.get('slug')
+        ][:5]
+        
+        if not genre_slugs and not relevant_tags:
+            print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gêneros ou tags para a busca.")
+            return []
 
+        # Monta a URL da API
+        genres_query_param = ",".join(genre_slugs)
+        tags_query_param = ",".join(relevant_tags)
+        
         # IDs das plataformas: 4=PC, 187=PS5, 18=PS4
         platform_filter = "4,187,18"
-
-        # --- PASSO 2: Fazer múltiplas buscas com pesos diferentes ---
-
-        # 2.1 - Jogos da mesma série (Peso: 100)
-        series_url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
-        series_response = requests.get(series_url)
-        if series_response.ok:
-            for game in series_response.json().get('results', []):
-                if game['id'] not in similar_games_scores:
-                    similar_games_scores[game['id']] = {'game': game, 'score': 100}
-
-        # 2.2 - Jogos do mesmo desenvolvedor (Peso: 50)
-        if developer_slugs:
-            dev_url = f"https://api.rawg.io/api/games?developers={developer_slugs[0]}&key={Config.RAWG_API_KEY}&page_size=10"
-            dev_response = requests.get(dev_url)
-            if dev_response.ok:
-                for game in dev_response.json().get('results', []):
-                    if game['id'] in similar_games_scores:
-                        similar_games_scores[game['id']]['score'] += 50
-                    else:
-                        similar_games_scores[game['id']] = {'game': game, 'score': 50}
-
-        # 2.3 - Jogos com gêneros e tags similares (Peso: 25)
-        search_url = (f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}"
-                      f"&genres={','.join(genre_slugs)}&tags={','.join(tags_slugs)}"
-                      f"&platforms={platform_filter}&page_size=40&ordering=-added")
-        search_response = requests.get(search_url)
-        if search_response.ok:
-            for game in search_response.json().get('results', []):
-                if game['id'] in similar_games_scores:
-                    similar_games_scores[game['id']]['score'] += 25
-                else:
-                    similar_games_scores[game['id']] = {'game': game, 'score': 25}
-
-        # --- PASSO 3: Processar, filtrar e ordenar a lista final ---
         
-        # Converte o dicionário para uma lista
-        ranked_games = list(similar_games_scores.values())
-        # Ordena a lista pela pontuação (maior primeiro)
-        ranked_games.sort(key=lambda x: x['score'], reverse=True)
+        similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=20&platforms={platform_filter}"
+        
+        if genres_query_param:
+            similar_url += f"&genres={genres_query_param}"
+        if tags_query_param:
+            similar_url += f"&tags={tags_query_param}"
+            
+        # --- MUDANÇA FINAL: ORDENAÇÃO POR POPULARIDADE ---
+        similar_url += "&ordering=-added"
 
-        # Filtra a lista final
+        print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
+        similar_response = requests.get(similar_url)
+        similar_response.raise_for_status()
+        rawg_data = similar_response.json()
+
+        # O resto do código permanece o mesmo...
         user_games_data = _get_data_from_sheet('Jogos')
         user_games_df = pd.DataFrame(user_games_data)
-        finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
         
+        finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
         if not user_games_df.empty:
             user_games_df['Nome'] = user_games_df['Nome'].astype(str)
             finished_games_names = user_games_df[user_games_df['Status'].isin(finished_statuses)]['Nome'].str.lower().tolist()
@@ -746,16 +731,11 @@ def get_similar_games(rawg_id):
             library_games_names = []
 
         similar_games_processed = []
-        for item in ranked_games:
-            game = item['game']
+        for game in rawg_data.get('results', []):
             game_name_lower = game.get('name', '').lower()
             
-            # Garante que não é o jogo original e não foi finalizado
             if game.get('id') != rawg_id and game_name_lower not in finished_games_names:
-                # É necessário buscar os detalhes completos para obter os gêneros traduzidos
-                detailed_game_info = requests.get(f"https://api.rawg.io/api/games/{game['id']}?key={Config.RAWG_API_KEY}").json()
-                genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in detailed_game_info.get('genres', [])]
-                
+                genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
                 in_library = game_name_lower in library_games_names
 
                 similar_games_processed.append({
@@ -765,11 +745,10 @@ def get_similar_games(rawg_id):
                     'styles': ', '.join(genres_pt),
                     'in_library': in_library
                 })
-
-        # Reordena mais uma vez para colocar os jogos da biblioteca no topo, mantendo a ordem de score
+        
         similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
         
-        print(f"[DEBUG] Encontrados e classificados {len(similar_games_processed)} jogos similares.")
+        print(f"[DEBUG] Encontrados e reordenados {len(similar_games_processed)} jogos similares.")
         print(f"--- FIM DA BUSCA DE JOGOS SIMILARES ---\n")
         return similar_games_processed[:10]
 
