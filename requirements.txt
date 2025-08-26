@@ -9,3 +9,4 @@ pandas
 requests
 deepl
 pytz # Adicionado para manipulação de fuso horário
+playwright # Adicionado para web scraping
