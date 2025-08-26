@@ -663,10 +663,9 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares com pontuação ajustada (Tags valem 2, Publisher removido)
-    e filtrando para PC, PS5 e PS4.
+    Busca jogos similares com pontuação ajustada e busca inicial aprimorada com tags.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V14 - Pontuação Ajustada) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V15 - Busca Inicial com Tags) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     try:
@@ -703,12 +702,16 @@ def get_similar_games(rawg_id):
         original_tags = {t['slug'] for t in game_data.get('tags', [])}
         original_developers = {d['slug'] for d in game_data.get('developers', [])}
         
+        # --- MUDANÇA PRINCIPAL AQUI ---
+        # Define os slugs para a busca inicial (mais seletiva)
+        initial_search_genres = [g.get('slug') for g in game_data.get('genres', [])[:5] if g.get('slug')]
+        initial_search_tags = [t.get('slug') for t in game_data.get('tags', [])[:15] if t.get('slug')]
+        
         similar_games_scores = {}
-        # MUDANÇA: Filtro de plataforma atualizado para PC, PS5 e PS4
         platform_filter = "4,187,18"
 
         # --- PASSO 3: Buscar e Pontuar Jogos ---
-        # 3.1 - Jogos da mesma série (Maior prioridade)
+        # 3.1 - Jogos da mesma série
         series_url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
         series_response = requests.get(series_url)
         if series_response.ok:
@@ -716,10 +719,10 @@ def get_similar_games(rawg_id):
                 if game['id'] != rawg_id:
                     similar_games_scores[game['id']] = {'game': game, 'score': 5}
 
-        # 3.2 - Busca ampla por gêneros para criar um pool de candidatos
-        if original_genres:
+        # 3.2 - Busca ampla por gêneros E TAGS para criar um pool de candidatos
+        if original_genres or initial_search_tags:
             search_url = (f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&platforms={platform_filter}"
-                          f"&genres={','.join(list(original_genres)[:2])}&page_size=40")
+                          f"&genres={','.join(initial_search_genres)}&tags={','.join(initial_search_tags)}&page_size=40")
             search_response = requests.get(search_url)
             
             if search_response.ok:
@@ -728,13 +731,11 @@ def get_similar_games(rawg_id):
                     
                     score = similar_games_scores.get(game['id'], {'score': 0})['score']
                     
-                    # Compara com dados do jogo original
+                    # Pontuação (agora aplicada a uma lista de candidatos muito melhor)
                     score += len({g['slug'] for g in game.get('genres', [])}.intersection(original_genres)) * 2
-                    # MUDANÇA: Pontos por tag aumentados para 2
                     score += len({t['slug'] for t in game.get('tags', [])}.intersection(original_tags)) * 2
                     if any(d['slug'] in original_developers for d in game.get('developers', [])):
                         score += 2
-                    # MUDANÇA: Pontuação por publisher/estúdio foi REMOVIDA
 
                     if score > 0:
                         similar_games_scores[game['id']] = {'game': game, 'score': score}
