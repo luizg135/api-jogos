@@ -704,8 +704,8 @@ def get_similar_games(rawg_id):
         
         # --- MUDANÇA PRINCIPAL AQUI ---
         # Define os slugs para a busca inicial (mais seletiva)
-        initial_search_genres = [g.get('slug') for g in game_data.get('genres', [])[:5] if g.get('slug')]
-        initial_search_tags = [t.get('slug') for t in game_data.get('tags', [])[:15] if t.get('slug')]
+        initial_search_genres = [g.get('slug') for g in game_data.get('genres', []) if g.get('slug')]
+        initial_search_tags = [t.get('slug') for t in game_data.get('tags', []) if t.get('slug')]
         
         similar_games_scores = {}
         platform_filter = "4,187,18"
