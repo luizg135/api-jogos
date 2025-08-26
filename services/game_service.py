@@ -511,11 +511,33 @@ def update_game_in_sheet(game_name, updated_data):
     try:
         sheet = _get_sheet('Jogos')
         if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
-        try: cell = sheet.find(game_name)
-        except gspread.exceptions.CellNotFound: return {"success": False, "message": "Jogo não encontrado."}
         
-        headers = sheet.row_values(1)
-        new_row = [updated_data.get(header, '') for header in headers]
+        try: 
+            cell = sheet.find(game_name)
+        except gspread.exceptions.CellNotFound: 
+            return {"success": False, "message": "Jogo não encontrado."}
+        
+        # --- LÓGICA DE PRESERVAÇÃO DE DADOS ---
+        # 1. Pega todos os dados da linha que será editada
+        all_records = _get_data_from_sheet('Jogos')
+        # gspread pode retornar nomes de colunas com espaços extras às vezes. Normalizamos.
+        normalized_records = [{k.strip(): v for k, v in record.items()} for record in all_records]
+        
+        game_to_update = next((record for record in normalized_records if record.get('Nome') == game_name), None)
+
+        if not game_to_update:
+            return {"success": False, "message": "Erro ao encontrar os dados do jogo para preservar."}
+            
+        # 2. Mescla os dados antigos com os novos dados recebidos
+        # Os dados em 'updated_data' (novos) irão sobrescrever os dados em 'game_to_update' (antigos)
+        merged_data = {**game_to_update, **updated_data}
+        # --- FIM DA LÓGICA ---
+
+        headers = [h.strip() for h in sheet.row_values(1)]
+        # Garante que a ordem das colunas seja a mesma da planilha
+        new_row = [merged_data.get(header, '') for header in headers]
+        
+        # Atualiza a linha inteira na planilha
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache('Jogos') 
         
