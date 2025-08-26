@@ -12,6 +12,15 @@ import pytz
 import os
 import random
 
+GENRE_TRANSLATIONS = {
+    "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
+    "RPG": "RPG", "Strategy": "Estratégia", "Shooter": "Tiro",
+    "Casual": "Casual", "Simulation": "Simulação", "Puzzle": "Puzzle",
+    "Arcade": "Arcade", "Platformer": "Plataforma", "Racing": "Corrida",
+    "Massively Multiplayer": "MMO", "Sports": "Esportes", "Fighting": "Luta",
+    "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
+    "Card": "Cartas"
+
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
 _data_cache = {}
