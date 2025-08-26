@@ -663,24 +663,22 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares usando um algoritmo de pontuação ponderada e um sistema de cache na planilha.
-    Pontuação: Gênero=2, Tag=1, Franquia=5, Desenvolvedor/Publisher=2.
+    Busca jogos similares com um algoritmo de pontuação unificado para garantir
+    que jogos da mesma série sejam corretamente pontuados e classificados.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V13 - Lógica Ponderada com Cache) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V16 - Lógica de Pontuação Corrigida) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     try:
-        # --- PASSO 1: VERIFICAR CACHE PRIMEIRO ---
+        # --- PASSO 1: VERIFICAR CACHE ---
         cache_sheet = _get_sheet('SimilarCache')
         if cache_sheet:
             all_cache_records = _get_data_from_sheet('SimilarCache')
             cached_games = [
                 {
-                    "id": record.get("SimilarGameID"),
-                    "name": record.get("SimilarGameName"),
-                    "background_image": record.get("BackgroundImage"),
-                    "styles": record.get("Styles"),
-                    "in_library": record.get("InLibrary") == 'True' # Converte string para booleano
+                    "id": record.get("SimilarGameID"), "name": record.get("SimilarGameName"),
+                    "background_image": record.get("BackgroundImage"), "styles": record.get("Styles"),
+                    "in_library": record.get("InLibrary") == 'True'
                 }
                 for record in all_cache_records if str(record.get("OriginalGameID")) == str(rawg_id)
             ]
@@ -689,9 +687,7 @@ def get_similar_games(rawg_id):
                 return cached_games
 
         print("[INFO] Nenhum cache encontrado. Buscando na API da RAWG.")
-        if not Config.RAWG_API_KEY:
-            print("[AVISO] Chave da API da RAWG não configurada.")
-            return []
+        if not Config.RAWG_API_KEY: return []
 
         # --- PASSO 2: Deconstruir o jogo original ---
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
@@ -702,46 +698,52 @@ def get_similar_games(rawg_id):
         original_genres = {g['slug'] for g in game_data.get('genres', [])}
         original_tags = {t['slug'] for t in game_data.get('tags', [])}
         original_developers = {d['slug'] for d in game_data.get('developers', [])}
-        original_publishers = {p['slug'] for p in game_data.get('publishers', [])}
+        
+        # --- PASSO 3: Coletar todos os jogos candidatos em um único lugar ---
+        candidate_games = {}
 
-        similar_games_scores = {}
-        platform_filter = "4,187,18"
-
-        # --- PASSO 3: Buscar e Pontuar Jogos ---
-
-        # 3.1 - Jogos da mesma série (Maior prioridade)
+        # 3.1 - Adiciona jogos da mesma série à lista de candidatos
         series_url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
         series_response = requests.get(series_url)
+        series_game_ids = set()
         if series_response.ok:
             for game in series_response.json().get('results', []):
                 if game['id'] != rawg_id:
-                    similar_games_scores[game['id']] = {'game': game, 'score': 5}
+                    candidate_games[game['id']] = game
+                    series_game_ids.add(game['id'])
 
-        # 3.2 - Busca ampla por gêneros para criar um pool de candidatos
-        if original_genres:
-            search_url = (f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&platforms={platform_filter}"
-                          f"&genres={','.join(list(original_genres))}&page_size=60")
-            search_response = requests.get(search_url)
+        # 3.2 - Adiciona jogos da busca geral à lista de candidatos
+        initial_search_genres = [g.get('slug') for g in game_data.get('genres', [])[:2] if g.get('slug')]
+        initial_search_tags = [t.get('slug') for t in game_data.get('tags', [])[:5] if t.get('slug')]
+        platform_filter = "4,187,18"
+        
+        search_url = (f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&platforms={platform_filter}"
+                      f"&genres={','.join(initial_search_genres)}&tags={','.join(initial_search_tags)}&page_size=40")
+        search_response = requests.get(search_url)
+        if search_response.ok:
+            for game in search_response.json().get('results', []):
+                if game['id'] != rawg_id:
+                    candidate_games[game['id']] = game
+        
+        # --- PASSO 4: Pontuar TODOS os candidatos de forma unificada ---
+        scored_games = []
+        for game_id, game_data_item in candidate_games.items():
+            score = 0
+            # Pontua se for da mesma série
+            if game_id in series_game_ids:
+                score += 5
+            # Pontua por gêneros e tags em comum
+            score += len({g['slug'] for g in game_data_item.get('genres', [])}.intersection(original_genres)) * 2
+            score += len({t['slug'] for t in game_data_item.get('tags', [])}.intersection(original_tags)) * 2
+            # Pontua por desenvolvedor em comum
+            if any(d['slug'] in original_developers for d in game_data_item.get('developers', [])):
+                score += 2
             
-            if search_response.ok:
-                for game in search_response.json().get('results', []):
-                    if game['id'] == rawg_id: continue
-                    
-                    score = similar_games_scores.get(game['id'], {'score': 0})['score']
-                    
-                    # Compara com dados do jogo original
-                    score += len({g['slug'] for g in game.get('genres', [])}.intersection(original_genres)) * 2
-                    score += len({t['slug'] for t in game.get('tags', [])}.intersection(original_tags)) * 1
-                    if any(d['slug'] in original_developers for d in game.get('developers', [])):
-                        score += 2
-                    if any(p['slug'] in original_publishers for p in game.get('publishers', [])):
-                        score += 1
+            if score > 0:
+                scored_games.append({'game': game_data_item, 'score': score})
 
-                    if score > 0:
-                        similar_games_scores[game['id']] = {'game': game, 'score': score}
-
-        # --- PASSO 4: Processar e Filtrar ---
-        ranked_games = sorted(similar_games_scores.values(), key=lambda x: x['score'], reverse=True)
+        # --- PASSO 5: Processar, Filtrar e Salvar ---
+        ranked_games = sorted(scored_games, key=lambda x: x['score'], reverse=True)
         
         user_games_data = _get_data_from_sheet('Jogos')
         user_games_df = pd.DataFrame(user_games_data)
@@ -757,44 +759,39 @@ def get_similar_games(rawg_id):
 
         similar_games_processed = []
         for item in ranked_games:
+            if len(similar_games_processed) >= 10: break
             game = item['game']
-            if len(similar_games_processed) >= 10: break # Limita a 10 resultados
-            
             game_name_lower = game.get('name', '').lower()
             if game_name_lower not in finished_games_names:
                 genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
                 in_library = game_name_lower in library_games_names
-
                 similar_games_processed.append({
-                    'id': game.get('id'),
-                    'name': game.get('name'),
-                    'background_image': game.get('background_image'),
-                    'styles': ', '.join(genres_pt),
-                    'in_library': in_library,
-                    'score': item['score'] # Inclui o score para o cache
+                    'id': game.get('id'), 'name': game.get('name'),
+                    'background_image': game.get('background_image'), 'styles': ', '.join(genres_pt),
+                    'in_library': in_library, 'score': item['score']
                 })
 
         similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
 
-        # --- PASSO 5: Salvar no Cache ---
         if cache_sheet and similar_games_processed:
+            # Limpa o cache antigo para este jogo antes de adicionar o novo
+            all_rows = cache_sheet.get_all_values()
+            rows_to_delete_indices = [i + 1 for i, row in enumerate(all_rows) if row and row[0] == str(rawg_id)]
+            for index in sorted(rows_to_delete_indices, reverse=True):
+                cache_sheet.delete_rows(index)
+
             rows_to_add = [
                 [
-                    rawg_id,
-                    game.get('id'),
-                    game.get('name'),
-                    game.get('background_image'),
-                    game.get('styles'),
-                    str(game.get('in_library')),
-                    game.get('score')
+                    rawg_id, game.get('id'), game.get('name'), game.get('background_image'),
+                    game.get('styles'), str(game.get('in_library')), game.get('score')
                 ]
                 for game in similar_games_processed
             ]
-            cache_sheet.append_rows(rows_to_add, value_input_option='USER_ENTERED')
+            if rows_to_add:
+                cache_sheet.append_rows(rows_to_add, value_input_option='USER_ENTERED')
             _invalidate_cache('SimilarCache')
 
-        print(f"[DEBUG] Encontrados, classificados e cacheados {len(similar_games_processed)} jogos.")
-        return [ {k:v for k,v in game.items() if k != 'score'} for game in similar_games_processed ] # Remove score antes de enviar
+        return [ {k:v for k,v in game.items() if k != 'score'} for game in similar_games_processed ]
 
     except Exception as e:
         print(f"!!! ERRO INESPERADO EM get_similar_games: {e}"); traceback.print_exc()
