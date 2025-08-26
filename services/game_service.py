@@ -663,65 +663,90 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares combinando gêneros e tags, e ordenando por
-    popularidade na plataforma RAWG para máxima relevância.
+    Busca jogos similares usando um algoritmo de pontuação ponderada e um sistema de cache na planilha.
+    Pontuação: Gênero=2, Tag=1, Franquia=5, Desenvolvedor/Publisher=2.
     """
-    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V10 - Ordenação por Popularidade) ---")
+    print(f"\n--- INICIANDO BUSCA DE JOGOS SIMILARES (V13 - Lógica Ponderada com Cache) ---")
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
-    if not Config.RAWG_API_KEY:
-        print("[AVISO] Chave da API da RAWG não configurada.")
-        return []
-
     try:
-        # Passo 1: Buscar os detalhes do jogo original.
+        # --- PASSO 1: VERIFICAR CACHE PRIMEIRO ---
+        cache_sheet = _get_sheet('SimilarCache')
+        if cache_sheet:
+            all_cache_records = _get_data_from_sheet('SimilarCache')
+            cached_games = [
+                {
+                    "id": record.get("SimilarGameID"),
+                    "name": record.get("SimilarGameName"),
+                    "background_image": record.get("BackgroundImage"),
+                    "styles": record.get("Styles"),
+                    "in_library": record.get("InLibrary") == 'True' # Converte string para booleano
+                }
+                for record in all_cache_records if str(record.get("OriginalGameID")) == str(rawg_id)
+            ]
+            if cached_games:
+                print(f"[DEBUG] Encontrados {len(cached_games)} jogos similares no cache.")
+                return cached_games
+
+        print("[INFO] Nenhum cache encontrado. Buscando na API da RAWG.")
+        if not Config.RAWG_API_KEY:
+            print("[AVISO] Chave da API da RAWG não configurada.")
+            return []
+
+        # --- PASSO 2: Deconstruir o jogo original ---
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
         game_data = game_response.json()
-        
-        # Extrai os 2 Gêneros mais relevantes para manter o foco
-        genres = game_data.get('genres', [])
-        genre_slugs = [g.get('slug') for g in genres[:2] if g.get('slug')]
-        
-        # Extrai as 5 Tags mais relevantes para refinar a busca
-        tags = game_data.get('tags', [])
-        relevant_tags = [
-            t.get('slug') for t in tags 
-            if t.get('slug') and t.get('language') == 'eng' and 'steam' not in t.get('slug') and 'epic' not in t.get('slug')
-        ][:5]
-        
-        if not genre_slugs and not relevant_tags:
-            print(f"[AVISO] Jogo com RAWG ID {rawg_id} não possui gêneros ou tags para a busca.")
-            return []
 
-        # Monta a URL da API
-        genres_query_param = ",".join(genre_slugs)
-        tags_query_param = ",".join(relevant_tags)
-        
-        # IDs das plataformas: 4=PC, 187=PS5, 18=PS4
+        original_genres = {g['slug'] for g in game_data.get('genres', [])}
+        original_tags = {t['slug'] for t in game_data.get('tags', [])}
+        original_developers = {d['slug'] for d in game_data.get('developers', [])}
+        original_publishers = {p['slug'] for p in game_data.get('publishers', [])}
+
+        similar_games_scores = {}
         platform_filter = "4,187,18"
-        
-        similar_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&page_size=20&platforms={platform_filter}"
-        
-        if genres_query_param:
-            similar_url += f"&genres={genres_query_param}"
-        if tags_query_param:
-            similar_url += f"&tags={tags_query_param}"
+
+        # --- PASSO 3: Buscar e Pontuar Jogos ---
+
+        # 3.1 - Jogos da mesma série (Maior prioridade)
+        series_url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
+        series_response = requests.get(series_url)
+        if series_response.ok:
+            for game in series_response.json().get('results', []):
+                if game['id'] != rawg_id:
+                    similar_games_scores[game['id']] = {'game': game, 'score': 5}
+
+        # 3.2 - Busca ampla por gêneros para criar um pool de candidatos
+        if original_genres:
+            search_url = (f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&platforms={platform_filter}"
+                          f"&genres={','.join(list(original_genres)[:2])}&page_size=40")
+            search_response = requests.get(search_url)
             
-        # --- MUDANÇA FINAL: ORDENAÇÃO POR POPULARIDADE ---
-        similar_url += "&ordering=-added"
+            if search_response.ok:
+                for game in search_response.json().get('results', []):
+                    if game['id'] == rawg_id: continue
+                    
+                    score = similar_games_scores.get(game['id'], {'score': 0})['score']
+                    
+                    # Compara com dados do jogo original
+                    score += len({g['slug'] for g in game.get('genres', [])}.intersection(original_genres)) * 2
+                    score += len({t['slug'] for t in game.get('tags', [])}.intersection(original_tags)) * 1
+                    if any(d['slug'] in original_developers for d in game.get('developers', [])):
+                        score += 2
+                    if any(p['slug'] in original_publishers for p in game.get('publishers', [])):
+                        score += 2
 
-        print(f"[DEBUG] Buscando jogos similares na URL: {similar_url}")
-        similar_response = requests.get(similar_url)
-        similar_response.raise_for_status()
-        rawg_data = similar_response.json()
+                    if score > 0:
+                        similar_games_scores[game['id']] = {'game': game, 'score': score}
 
-        # O resto do código permanece o mesmo...
+        # --- PASSO 4: Processar e Filtrar ---
+        ranked_games = sorted(similar_games_scores.values(), key=lambda x: x['score'], reverse=True)
+        
         user_games_data = _get_data_from_sheet('Jogos')
         user_games_df = pd.DataFrame(user_games_data)
-        
         finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
+        
         if not user_games_df.empty:
             user_games_df['Nome'] = user_games_df['Nome'].astype(str)
             finished_games_names = user_games_df[user_games_df['Status'].isin(finished_statuses)]['Nome'].str.lower().tolist()
@@ -731,10 +756,12 @@ def get_similar_games(rawg_id):
             library_games_names = []
 
         similar_games_processed = []
-        for game in rawg_data.get('results', []):
-            game_name_lower = game.get('name', '').lower()
+        for item in ranked_games:
+            game = item['game']
+            if len(similar_games_processed) >= 10: break # Limita a 10 resultados
             
-            if game.get('id') != rawg_id and game_name_lower not in finished_games_names:
+            game_name_lower = game.get('name', '').lower()
+            if game_name_lower not in finished_games_names:
                 genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
                 in_library = game_name_lower in library_games_names
 
@@ -743,19 +770,32 @@ def get_similar_games(rawg_id):
                     'name': game.get('name'),
                     'background_image': game.get('background_image'),
                     'styles': ', '.join(genres_pt),
-                    'in_library': in_library
+                    'in_library': in_library,
+                    'score': item['score'] # Inclui o score para o cache
                 })
-        
-        similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
-        
-        print(f"[DEBUG] Encontrados e reordenados {len(similar_games_processed)} jogos similares.")
-        print(f"--- FIM DA BUSCA DE JOGOS SIMILARES ---\n")
-        return similar_games_processed[:10]
 
-    except requests.exceptions.RequestException as e:
-        print(f"!!! ERRO DE COMUNICAÇÃO COM A API EXTERNA (SIMILAR GAMES): {e}")
-        return []
+        similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
+
+        # --- PASSO 5: Salvar no Cache ---
+        if cache_sheet and similar_games_processed:
+            rows_to_add = [
+                [
+                    rawg_id,
+                    game.get('id'),
+                    game.get('name'),
+                    game.get('background_image'),
+                    game.get('styles'),
+                    str(game.get('in_library')),
+                    game.get('score')
+                ]
+                for game in similar_games_processed
+            ]
+            cache_sheet.append_rows(rows_to_add, value_input_option='USER_ENTERED')
+            _invalidate_cache('SimilarCache')
+
+        print(f"[DEBUG] Encontrados, classificados e cacheados {len(similar_games_processed)} jogos.")
+        return [ {k:v for k,v in game.items() if k != 'score'} for game in similar_games_processed ] # Remove score antes de enviar
+
     except Exception as e:
-        print(f"!!! ERRO INESPERADO EM get_similar_games: {e}")
-        traceback.print_exc()
+        print(f"!!! ERRO INESPERADO EM get_similar_games: {e}"); traceback.print_exc()
         return []
