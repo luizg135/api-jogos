@@ -631,45 +631,59 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares na API da RAWG, filtra os já jogados e indica
-    quais estão na biblioteca do usuário.
+    Busca jogos similares com base no gênero principal, já que o endpoint /suggested
+    não está disponível no plano gratuito da RAWG API.
     """
     if not Config.RAWG_API_KEY:
         print("AVISO: Chave da API da RAWG não configurada.")
         return []
 
     try:
-        # 1. Buscar jogos similares na API da RAWG
-        url = f"https://api.rawg.io/api/games/{rawg_id}/suggested?key={Config.RAWG_API_KEY}&page_size=10"
-        response = requests.get(url)
-        response.raise_for_status()
-        rawg_data = response.json()
+        # Passo 1: Buscar os detalhes do jogo original para descobrir seu gênero.
+        game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
+        game_response = requests.get(game_details_url)
+        game_response.raise_for_status()
+        game_data = game_response.json()
+        
+        genres = game_data.get('genres', [])
+        if not genres:
+            print(f"AVISO: Jogo com RAWG ID {rawg_id} não possui gênero definido.")
+            return []
 
-        # 2. Obter a biblioteca de jogos do usuário
+        # Pega o 'slug' do primeiro gênero (ex: 'action', 'role-playing-games-rpg')
+        primary_genre_slug = genres[0].get('slug')
+        if not primary_genre_slug:
+            return []
+
+        # Passo 2: Buscar outros jogos com base nesse gênero.
+        similar_url = f"https://api.rawg.io/api/games?genres={primary_genre_slug}&key={Config.RAWG_API_KEY}&page_size=10"
+        similar_response = requests.get(similar_url)
+        similar_response.raise_for_status()
+        rawg_data = similar_response.json()
+
+        # Passo 3: Obter a biblioteca de jogos do usuário para filtrar.
         user_games_data = _get_data_from_sheet('Jogos')
         user_games_df = pd.DataFrame(user_games_data)
-
-        # 3. Filtrar jogos que o usuário já concluiu ou abandonou
+        
         finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
         if not user_games_df.empty:
+            # Garante que a coluna 'Nome' seja do tipo string antes de usar .str
+            user_games_df['Nome'] = user_games_df['Nome'].astype(str)
             finished_games_names = user_games_df[user_games_df['Status'].isin(finished_statuses)]['Nome'].str.lower().tolist()
+            library_games_names = user_games_df['Nome'].str.lower().tolist()
         else:
             finished_games_names = []
+            library_games_names = []
 
-
-        # 4. Processar e retornar a lista de jogos similares
+        # Passo 4: Processar e retornar a lista de jogos similares.
         similar_games_processed = []
         for game in rawg_data.get('results', []):
             game_name_lower = game.get('name', '').lower()
-
-            if game_name_lower not in finished_games_names:
-                # Traduzir os gêneros
+            
+            # Não mostra o próprio jogo na lista de similares nem os já finalizados
+            if game.get('id') != rawg_id and game_name_lower not in finished_games_names:
                 genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
-
-                # Verificar se o jogo já está na biblioteca
-                in_library = False
-                if not user_games_df.empty:
-                    in_library = game_name_lower in user_games_df['Nome'].str.lower().tolist()
+                in_library = game_name_lower in library_games_names
 
                 similar_games_processed.append({
                     'id': game.get('id'),
