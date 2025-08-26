@@ -628,3 +628,63 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
     except Exception as e:
         print(f"ERRO na função get_random_game: {e}"); traceback.print_exc()
         return None
+
+def get_similar_games(rawg_id):
+    """
+    Busca jogos similares na API da RAWG, filtra os já jogados e indica
+    quais estão na biblioteca do usuário.
+    """
+    if not Config.RAWG_API_KEY:
+        print("AVISO: Chave da API da RAWG não configurada.")
+        return []
+
+    try:
+        # 1. Buscar jogos similares na API da RAWG
+        url = f"https://api.rawg.io/api/games/{rawg_id}/suggested?key={Config.RAWG_API_KEY}&page_size=10"
+        response = requests.get(url)
+        response.raise_for_status()
+        rawg_data = response.json()
+
+        # 2. Obter a biblioteca de jogos do usuário
+        user_games_data = _get_data_from_sheet('Jogos')
+        user_games_df = pd.DataFrame(user_games_data)
+
+        # 3. Filtrar jogos que o usuário já concluiu ou abandonou
+        finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
+        if not user_games_df.empty:
+            finished_games_names = user_games_df[user_games_df['Status'].isin(finished_statuses)]['Nome'].str.lower().tolist()
+        else:
+            finished_games_names = []
+
+
+        # 4. Processar e retornar a lista de jogos similares
+        similar_games_processed = []
+        for game in rawg_data.get('results', []):
+            game_name_lower = game.get('name', '').lower()
+
+            if game_name_lower not in finished_games_names:
+                # Traduzir os gêneros
+                genres_pt = [GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in game.get('genres', [])]
+
+                # Verificar se o jogo já está na biblioteca
+                in_library = False
+                if not user_games_df.empty:
+                    in_library = game_name_lower in user_games_df['Nome'].str.lower().tolist()
+
+                similar_games_processed.append({
+                    'id': game.get('id'),
+                    'name': game.get('name'),
+                    'background_image': game.get('background_image'),
+                    'styles': ', '.join(genres_pt),
+                    'in_library': in_library
+                })
+
+        return similar_games_processed
+
+    except requests.exceptions.RequestException as e:
+        print(f"!!! ERRO DE COMUNICAÇÃO COM A API EXTERNA (SIMILAR GAMES): {e}")
+        return []
+    except Exception as e:
+        print(f"!!! ERRO INESPERADO EM get_similar_games: {e}")
+        traceback.print_exc()
+        return []
