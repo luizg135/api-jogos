@@ -20,6 +20,7 @@ GENRE_TRANSLATIONS = {
     "Massively Multiplayer": "MMO", "Sports": "Esportes", "Fighting": "Luta",
     "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
     "Card": "Cartas"
+}
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
