@@ -641,15 +641,15 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
 
 def get_similar_games(rawg_id):
     """
-    Busca jogos similares com base no gênero principal, já que o endpoint /suggested
-    não está disponível no plano gratuito da RAWG API.
+    Busca jogos similares com base em múltiplos gêneros para fornecer
+    recomendações mais precisas e variadas.
     """
     if not Config.RAWG_API_KEY:
         print("AVISO: Chave da API da RAWG não configurada.")
         return []
 
     try:
-        # Passo 1: Buscar os detalhes do jogo original para descobrir seu gênero.
+        # Passo 1: Buscar os detalhes do jogo original para descobrir seus gêneros.
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
@@ -660,13 +660,14 @@ def get_similar_games(rawg_id):
             print(f"AVISO: Jogo com RAWG ID {rawg_id} não possui gênero definido.")
             return []
 
-        # Pega o 'slug' do primeiro gênero (ex: 'action', 'role-playing-games-rpg')
-        primary_genre_slug = genres[0].get('slug')
-        if not primary_genre_slug:
+        # NOVA LÓGICA: Pega os slugs de até 3 gêneros e os une com vírgulas.
+        genre_slugs = [g.get('slug') for g in genres[:3] if g.get('slug')]
+        if not genre_slugs:
             return []
+        genres_query_param = ",".join(genre_slugs)
 
-        # Passo 2: Buscar outros jogos com base nesse gênero.
-        similar_url = f"https://api.rawg.io/api/games?genres={primary_genre_slug}&key={Config.RAWG_API_KEY}&page_size=10"
+        # Passo 2: Buscar outros jogos com base nesses gêneros.
+        similar_url = f"https://api.rawg.io/api/games?genres={genres_query_param}&key={Config.RAWG_API_KEY}&page_size=10"
         similar_response = requests.get(similar_url)
         similar_response.raise_for_status()
         rawg_data = similar_response.json()
@@ -677,7 +678,6 @@ def get_similar_games(rawg_id):
         
         finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
         if not user_games_df.empty:
-            # Garante que a coluna 'Nome' seja do tipo string antes de usar .str
             user_games_df['Nome'] = user_games_df['Nome'].astype(str)
             finished_games_names = user_games_df[user_games_df['Status'].isin(finished_statuses)]['Nome'].str.lower().tolist()
             library_games_names = user_games_df['Nome'].str.lower().tolist()
@@ -702,8 +702,9 @@ def get_similar_games(rawg_id):
                     'styles': ', '.join(genres_pt),
                     'in_library': in_library
                 })
-
-        return similar_games_processed
+        
+        # Limita o resultado final a 10 jogos, caso a API retorne mais
+        return similar_games_processed[:10]
 
     except requests.exceptions.RequestException as e:
         print(f"!!! ERRO DE COMUNICAÇÃO COM A API EXTERNA (SIMILAR GAMES): {e}")
