@@ -837,16 +837,28 @@ def get_steam_library():
         return {"error": "Credenciais da Steam não configuradas no servidor."}
 
     try:
+        print("--- INICIANDO SINCRONIZAÇÃO COM A STEAM ---") # Log de início
         steam_url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}&format=json&include_appinfo=true"
         response = requests.get(steam_url)
         response.raise_for_status()
         steam_games_raw = response.json().get('response', {}).get('games', [])
         
         steam_games_filtered = [game for game in steam_games_raw if game.get('playtime_forever', 0) > 0]
+        print(f"DEBUG: Encontrados {len(steam_games_filtered)} jogos jogados na Steam.")
 
         library_games = _get_data_from_sheet('Jogos')
+        print(f"DEBUG: Encontrados {len(library_games)} jogos na planilha.")
+
         # Cria um mapa com os nomes normalizados para comparação
         library_map = {_normalize_name(game.get('Nome')): game for game in library_games}
+        
+        # Log de exemplo da normalização da planilha
+        if library_games:
+            example_game = library_games[0]
+            print(f"DEBUG: Exemplo de normalização da planilha:")
+            print(f"  -> Original: '{example_game.get('Nome')}'")
+            print(f"  -> Normalizado: '{_normalize_name(example_game.get('Nome'))}'")
+
 
         new_games = []
         games_to_update = []
@@ -882,14 +894,22 @@ def get_steam_library():
 
             # A comparação inteligente é feita aqui
             normalized_steam_name = _normalize_name(name)
+            
+            # Log de depuração principal
+            print(f"\n--- Comparando Jogo: '{name}' ---")
+            print(f"  -> Nome normalizado da Steam: '{normalized_steam_name}'")
+
             if normalized_steam_name in library_map:
                 existing_game = library_map[normalized_steam_name]
-                # Usa o nome original da planilha para manter a consistência
+                print(f"  -> Jogo ENCONTRADO na planilha como: '{existing_game.get('Nome')}'")
+                print("  -> Resultado: MARCADO PARA ATUALIZAR")
                 game_payload['name'] = existing_game.get('Nome') 
                 game_payload['playtime_local'] = f"{existing_game.get('Tempo de Jogo', 0)}h"
                 game_payload['achievements_local'] = existing_game.get('Conquistas Obtidas', 0)
                 return 'update', game_payload
             else:
+                print(f"  -> Jogo NÃO encontrado na planilha.")
+                print("  -> Resultado: MARCADO COMO NOVO")
                 return 'new', game_payload
 
         with ThreadPoolExecutor(max_workers=20) as executor:
@@ -903,7 +923,8 @@ def get_steam_library():
 
         new_games.sort(key=lambda x: x['name'])
         games_to_update.sort(key=lambda x: x['name'])
-
+        
+        print("--- SINCRONIZAÇÃO CONCLUÍDA ---")
         return {"new_games": new_games, "games_to_update": games_to_update}
 
     except requests.exceptions.RequestException as e:
