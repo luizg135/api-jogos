@@ -11,9 +11,6 @@ import deepl
 import pytz
 import os
 import random
-import asyncio
-from playwright.async_api import async_playwright
-import re
 
 GENRE_TRANSLATIONS = {
     "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
@@ -459,123 +456,6 @@ def update_profile_in_sheet(profile_data):
     except Exception as e:
         print(f"Erro ao atualizar perfil: {e}"); traceback.print_exc()
         return {"success": False, "message": "Erro ao atualizar perfil."}
-        
-# --- SCRAPER INTEGRADO ---
-
-async def _scrape_similar_games_async(game_title):
-    """
-    Navega na página de sugestões de um jogo específico no RAWG.io,
-    e retorna até 50 títulos, plataformas, Metascore e URLs de jogos sugeridos.
-    """
-    if game_title.lower() == 'forspoken':
-        game_url_slug = 'project-athia'
-        print("Tratamento especial para 'Forspoken': usando slug 'project-athia'.")
-    else:
-        game_url_slug = re.sub(r"[':]", '', game_title.lower())
-        game_url_slug = re.sub(r'[\s]', '-', game_url_slug)
-        game_url_slug = re.sub(r'[^a-z0-9-]', '', game_url_slug)
-    
-    url = f'https://rawg.io/games/{game_url_slug}/suggestions'
-    print(f"URL de busca gerada: {url}")
-    
-    limit = 50 
-    
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        print(f"Buscando sugestões para '{game_title}' em: {url}")
-        await page.goto(url, wait_until='domcontentloaded')
-        try:
-            await page.wait_for_selector('div.game-suggestions__items', timeout=60000)
-            await page.wait_for_timeout(3000)
-            last_height = await page.evaluate("document.body.scrollHeight")
-            scroll_count = 0
-            while True:
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(2000)
-                new_height = await page.evaluate("document.body.scrollHeight")
-                scroll_count += 1
-                if new_height == last_height or len(await page.query_selector_all('div.game-card-large')) >= limit:
-                    print(f"Rolagem finalizada após {scroll_count} iterações. Total de jogos carregados.")
-                    break
-                last_height = new_height
-
-            game_elements = await page.query_selector_all('div.game-card-large')
-            suggestions_list = []
-            allowed_platforms = ['playstation', 'pc']
-            for element in game_elements:
-                try:
-                    platform_elements = await element.query_selector_all('div.platforms__platform')
-                    platforms = []
-                    for p in platform_elements:
-                        class_attr = await p.get_attribute('class')
-                        if class_attr:
-                            platform_name = class_attr.split(' ')[-1].replace('platforms__platform_', '')
-                            platforms.append(platform_name.lower())
-                    metascore_element = await element.query_selector('div.metascore-label')
-                    metascore = await metascore_element.inner_text() if metascore_element else 'N/A'
-                    if metascore == 'N/A':
-                        print(f"Jogo ignorado por ter Metascore 'N/A'.")
-                        continue
-                    if not any(p in platforms for p in allowed_platforms):
-                        print("Jogo ignorado por não estar em PC ou PlayStation.")
-                        continue
-                    link_element = await element.query_selector('a.game-card-compact__heading_with-link')
-                    title = await link_element.inner_text()
-                    url_suffix = await link_element.get_attribute('href')
-                    suggestions_list.append({
-                        'title': title, 
-                        'url': f"https://rawg.io{url_suffix}",
-                        'platforms': ', '.join(p.upper() for p in platforms),
-                        'metascore': metascore
-                    })
-                except Exception as e:
-                    print(f"Erro ao extrair dados de um elemento: {e}")
-            await browser.close()
-            return suggestions_list[:limit]
-        except Exception as e:
-            print(f"Erro ao raspar a página de '{game_title}': {e}")
-            await browser.close()
-            return []
-        
-def _add_similar_games_to_sheet(game_title):
-    try:
-        # CORREÇÃO AQUI: Obtendo o cliente de uma forma independente e robusta
-        creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
-        client = gspread.authorize(creds)
-        spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
-        
-        try:
-            target_sheet = spreadsheet.worksheet("Jogos Similares")
-            processed_titles_set = set(target_sheet.col_values(1))
-        except gspread.exceptions.WorksheetNotFound:
-            print("Aba 'Jogos Similares' não encontrada. Criando...")
-            target_sheet = spreadsheet.add_worksheet(title="Jogos Similares", rows="100", cols="4")
-            target_sheet.update([['Jogo Base', 'Jogo Similar', 'Plataformas', 'Metascore', 'URL']], 'A1:E1')
-            processed_titles_set = set()
-        
-        suggestions = asyncio.run(_scrape_similar_games_async(game_title))
-        
-        if suggestions:
-            rows_to_append = []
-            for suggestion in suggestions:
-                rows_to_append.append([
-                    game_title,
-                    suggestion['title'],
-                    suggestion['platforms'],
-                    suggestion['metascore'],
-                    suggestion['url']
-                ])
-            
-            target_sheet.append_rows(rows_to_append)
-            print(f"Dados de jogos similares para '{game_title}' salvos com sucesso.")
-        else:
-            print(f"Nenhum resultado de jogos similares encontrado para '{game_title}'.")
-    except Exception as e:
-        print(f"ERRO: Erro ao processar jogos similares para '{game_title}': {e}")
-        traceback.print_exc()
 
 def add_game_to_sheet(game_data):
     try:
@@ -608,11 +488,6 @@ def add_game_to_sheet(game_data):
         sheet.append_row(row_data)
         _invalidate_cache('Jogos') 
         _add_notification("Novo Jogo Adicionado", f"Você adicionou '{game_data.get('Nome')}' à sua biblioteca!", link_target=game_data.get('Nome'))
-
-        game_title = game_data.get('Nome')
-        if game_title:
-            _add_similar_games_to_sheet(game_title)
-            
         return {"success": True, "message": "Jogo adicionado com sucesso."}
     except Exception as e:
         print(f"ERRO: Erro ao adicionar jogo: {e}"); traceback.print_exc()
@@ -642,7 +517,10 @@ def update_game_in_sheet(game_name, updated_data):
         except gspread.exceptions.CellNotFound: 
             return {"success": False, "message": "Jogo não encontrado."}
         
+        # --- LÓGICA DE PRESERVAÇÃO DE DADOS ---
+        # 1. Pega todos os dados da linha que será editada
         all_records = _get_data_from_sheet('Jogos')
+        # gspread pode retornar nomes de colunas com espaços extras às vezes. Normalizamos.
         normalized_records = [{k.strip(): v for k, v in record.items()} for record in all_records]
         
         game_to_update = next((record for record in normalized_records if record.get('Nome') == game_name), None)
@@ -650,10 +528,16 @@ def update_game_in_sheet(game_name, updated_data):
         if not game_to_update:
             return {"success": False, "message": "Erro ao encontrar os dados do jogo para preservar."}
             
+        # 2. Mescla os dados antigos com os novos dados recebidos
+        # Os dados em 'updated_data' (novos) irão sobrescrever os dados em 'game_to_update' (antigos)
         merged_data = {**game_to_update, **updated_data}
+        # --- FIM DA LÓGICA ---
+
         headers = [h.strip() for h in sheet.row_values(1)]
+        # Garante que a ordem das colunas seja a mesma da planilha
         new_row = [merged_data.get(header, '') for header in headers]
         
+        # Atualiza a linha inteira na planilha
         sheet.update(f'A{cell.row}', [new_row])
         _invalidate_cache('Jogos') 
         
@@ -711,7 +595,7 @@ def delete_wish_from_sheet(wish_name):
 def purchase_wish_item_in_sheet(item_name):
     try:
         sheet = _get_sheet('Desejos')
-        if not sheet: return {"success": False, "message": "Conexão com a planilha de desejos falhou."}
+        if not sheet: return {"success": False, "message": "Conexão com a planilha falhou."}
         cell = sheet.find(item_name)
         headers = sheet.row_values(1)
         status_col_index = headers.index('Status') + 1
@@ -786,6 +670,7 @@ def get_similar_games(rawg_id):
     print(f"[DEBUG] Recebido RAWG ID: {rawg_id}")
 
     try:
+        # --- PASSO 1: VERIFICAR CACHE ---
         cache_sheet = _get_sheet('SimilarCache')
         if cache_sheet:
             all_cache_records = _get_data_from_sheet('SimilarCache')
@@ -803,14 +688,21 @@ def get_similar_games(rawg_id):
 
         print("[INFO] Nenhum cache encontrado. Buscando na API da RAWG.")
         if not Config.RAWG_API_KEY: return []
+
+        # --- PASSO 2: Deconstruir o jogo original ---
         game_details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
         game_response = requests.get(game_details_url)
         game_response.raise_for_status()
         game_data = game_response.json()
+
         original_genres = {g['slug'] for g in game_data.get('genres', [])}
         original_tags = {t['slug'] for t in game_data.get('tags', [])}
         original_developers = {d['slug'] for d in game_data.get('developers', [])}
+        
+        # --- PASSO 3: Coletar todos os jogos candidatos em um único lugar ---
         candidate_games = {}
+
+        # 3.1 - Adiciona jogos da mesma série à lista de candidatos
         series_url = f"https://api.rawg.io/api/games/{rawg_id}/game-series?key={Config.RAWG_API_KEY}"
         series_response = requests.get(series_url)
         series_game_ids = set()
@@ -819,9 +711,12 @@ def get_similar_games(rawg_id):
                 if game['id'] != rawg_id:
                     candidate_games[game['id']] = game
                     series_game_ids.add(game['id'])
+
+        # 3.2 - Adiciona jogos da busca geral à lista de candidatos
         initial_search_genres = [g.get('slug') for g in game_data.get('genres', [])[:2] if g.get('slug')]
         initial_search_tags = [t.get('slug') for t in game_data.get('tags', [])[:5] if t.get('slug')]
         platform_filter = "4,187,18"
+        
         search_url = (f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&platforms={platform_filter}"
                       f"&genres={','.join(initial_search_genres)}&tags={','.join(initial_search_tags)}&page_size=40")
         search_response = requests.get(search_url)
@@ -829,21 +724,31 @@ def get_similar_games(rawg_id):
             for game in search_response.json().get('results', []):
                 if game['id'] != rawg_id:
                     candidate_games[game['id']] = game
+        
+        # --- PASSO 4: Pontuar TODOS os candidatos de forma unificada ---
         scored_games = []
         for game_id, game_data_item in candidate_games.items():
             score = 0
+            # Pontua se for da mesma série
             if game_id in series_game_ids:
                 score += 5
+            # Pontua por gêneros e tags em comum
             score += len({g['slug'] for g in game_data_item.get('genres', [])}.intersection(original_genres)) * 2
             score += len({t['slug'] for t in game_data_item.get('tags', [])}.intersection(original_tags)) * 2
+            # Pontua por desenvolvedor em comum
             if any(d['slug'] in original_developers for d in game_data_item.get('developers', [])):
                 score += 2
+            
             if score > 0:
                 scored_games.append({'game': game_data_item, 'score': score})
+
+        # --- PASSO 5: Processar, Filtrar e Salvar ---
         ranked_games = sorted(scored_games, key=lambda x: x['score'], reverse=True)
+        
         user_games_data = _get_data_from_sheet('Jogos')
         user_games_df = pd.DataFrame(user_games_data)
         finished_statuses = ["Finalizado", "Platinado", "Abandonado"]
+        
         if not user_games_df.empty:
             user_games_df['Nome'] = user_games_df['Nome'].astype(str)
             finished_games_names = user_games_df[user_games_df['Status'].isin(finished_statuses)]['Nome'].str.lower().tolist()
@@ -851,6 +756,7 @@ def get_similar_games(rawg_id):
         else:
             finished_games_names = []
             library_games_names = []
+
         similar_games_processed = []
         for item in ranked_games:
             if len(similar_games_processed) >= 10: break
@@ -864,12 +770,16 @@ def get_similar_games(rawg_id):
                     'background_image': game.get('background_image'), 'styles': ', '.join(genres_pt),
                     'in_library': in_library, 'score': item['score']
                 })
+
         similar_games_processed.sort(key=lambda x: x['in_library'], reverse=True)
+
         if cache_sheet and similar_games_processed:
+            # Limpa o cache antigo para este jogo antes de adicionar o novo
             all_rows = cache_sheet.get_all_values()
             rows_to_delete_indices = [i + 1 for i, row in enumerate(all_rows) if row and row[0] == str(rawg_id)]
             for index in sorted(rows_to_delete_indices, reverse=True):
                 cache_sheet.delete_rows(index)
+
             rows_to_add = [
                 [
                     rawg_id, game.get('id'), game.get('name'), game.get('background_image'),
@@ -880,7 +790,9 @@ def get_similar_games(rawg_id):
             if rows_to_add:
                 cache_sheet.append_rows(rows_to_add, value_input_option='USER_ENTERED')
             _invalidate_cache('SimilarCache')
+
         return [ {k:v for k,v in game.items() if k != 'score'} for game in similar_games_processed ]
+
     except Exception as e:
         print(f"!!! ERRO INESPERADO EM get_similar_games: {e}"); traceback.print_exc()
         return []
