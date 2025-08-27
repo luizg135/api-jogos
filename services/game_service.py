@@ -26,8 +26,8 @@ GENRE_TRANSLATIONS = {
 
 def _normalize_name(name):
     """
-    Normaliza o nome de um jogo para comparação: minúsculas, remove caracteres especiais
-    e termos comuns de edição.
+    Normaliza o nome de um jogo para uma comparação robusta: remove espaços, 
+    caracteres especiais, termos de edição e converte para minúsculas.
     """
     if not name:
         return ""
@@ -50,16 +50,14 @@ def _normalize_name(name):
         'edition'
     ]
     
-    # Remove os termos de edição da string
     for term in edition_terms:
         name = name.replace(term, '')
 
-    # Remove caracteres como ®, ™, ©
-    name = re.sub(r'[®™©]', '', name)
-    # Remove pontuação e caracteres não alfanuméricos (exceto espaços)
-    name = re.sub(r'[^a-z0-9\s]', '', name)
-    # Remove espaços duplicados que podem ter surgido após as remoções
-    name = re.sub(r'\s+', ' ', name).strip()
+    # --- LÓGICA PRINCIPAL CORRIGIDA ---
+    # Remove TUDO que não for letra ou número.
+    # Isso elimina espaços, pontuação, ™, ®, etc., de uma só vez.
+    name = re.sub(r'[^a-z0-9]', '', name)
+    # --- FIM DA CORREÇÃO ---
     
     return name
 
