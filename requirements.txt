@@ -8,4 +8,5 @@ werkzeug
 pandas
 requests
 deepl
-pytz # Adicionado para manipulação de fuso horário
+pytz
+beautifulsoup4
