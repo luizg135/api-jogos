@@ -12,6 +12,7 @@ import pytz
 import os
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
 
 GENRE_TRANSLATIONS = {
     "Action": "Ação", "Indie": "Indie", "Adventure": "Aventura",
@@ -22,6 +23,45 @@ GENRE_TRANSLATIONS = {
     "Family": "Família", "Board Games": "Jogos de Tabuleiro", "Educational": "Educacional",
     "Card": "Cartas"
 }
+
+def _normalize_name(name):
+    """
+    Normaliza o nome de um jogo para comparação: minúsculas, remove caracteres especiais
+    e termos comuns de edição.
+    """
+    if not name:
+        return ""
+        
+    name = name.lower()
+    
+    # Lista de termos de edição a serem removidos.
+    edition_terms = [
+        'game of the year edition', 'goty edition', 'goty',
+        'deluxe edition', 'digital deluxe edition', 'deluxe',
+        'ultimate edition', 'ultimate',
+        'definitive edition', 'definitive',
+        'enhanced edition', 'enhanced',
+        'windows edition', 'windows',
+        'remastered', 'remake',
+        'the complete edition', 'complete edition',
+        'special edition',
+        'limited edition',
+        'collectors edition',
+        'edition'
+    ]
+    
+    # Remove os termos de edição da string
+    for term in edition_terms:
+        name = name.replace(term, '')
+
+    # Remove caracteres como ®, ™, ©
+    name = re.sub(r'[®™©]', '', name)
+    # Remove pontuação e caracteres não alfanuméricos (exceto espaços)
+    name = re.sub(r'[^a-z0-9\s]', '', name)
+    # Remove espaços duplicados que podem ter surgido após as remoções
+    name = re.sub(r'\s+', ' ', name).strip()
+    
+    return name
 
 # --- Cache global para planilhas e dados ---
 _sheet_cache = {}
@@ -790,61 +830,86 @@ def get_similar_games_from_sheet(base_game_name: str):
 
 def get_steam_library():
     """
-    Busca a biblioteca de jogos da Steam do usuário, compara com a planilha
-    e retorna uma lista de jogos novos e jogos a serem atualizados.
+    Busca a biblioteca de jogos da Steam, enriquecendo com conquistas e capas,
+    compara com a planilha e retorna uma lista de jogos novos e a serem atualizados.
     """
     if not Config.STEAM_API_KEY or not Config.STEAM_USER_ID:
         return {"error": "Credenciais da Steam não configuradas no servidor."}
 
     try:
-        # 1. Buscar jogos da Steam
         steam_url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}&format=json&include_appinfo=true"
         response = requests.get(steam_url)
         response.raise_for_status()
-        steam_data = response.json().get('response', {}).get('games', [])
+        steam_games_raw = response.json().get('response', {}).get('games', [])
+        
+        steam_games_filtered = [game for game in steam_games_raw if game.get('playtime_forever', 0) > 0]
 
-        steam_games = {
-            game['name']: {
-                'appid': game['appid'],
-                'playtime_forever': game.get('playtime_forever', 0),
-                'name': game['name']
-            } for game in steam_data if game.get('playtime_forever', 0) > 0 # Ignora jogos não jogados
-        }
-
-        # 2. Buscar jogos da planilha
         library_games = _get_data_from_sheet('Jogos')
-        library_game_names = {game.get('Nome').lower() for game in library_games}
+        # Cria um mapa com os nomes normalizados para comparação
+        library_map = {_normalize_name(game.get('Nome')): game for game in library_games}
 
-        # 3. Comparar e separar as listas
         new_games = []
         games_to_update = []
 
-        for name, steam_game_data in steam_games.items():
-            playtime_hours = round(steam_game_data['playtime_forever'] / 60)
+        def enrich_game_data(game):
+            appid = game['appid']
+            name = game['name']
+            playtime_hours = round(game.get('playtime_forever', 0) / 60)
             
+            achievements_count = 0
+            is_platinum = False
+            try:
+                ach_url = f"http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appid}&key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}"
+                ach_response = requests.get(ach_url, timeout=5).json()
+                if ach_response.get('playerstats', {}).get('success') and 'achievements' in ach_response['playerstats']:
+                    all_achievements = ach_response['playerstats']['achievements']
+                    total_achievements = len(all_achievements)
+                    unlocked_achievements = [ach for ach in all_achievements if ach.get('achieved') == 1]
+                    achievements_count = len(unlocked_achievements)
+                    if total_achievements > 0 and achievements_count == total_achievements:
+                        is_platinum = True
+            except Exception:
+                pass 
+
             game_payload = {
                 'name': name,
-                'playtime': f"{playtime_hours}h",
-                'achievements': 'N/A', # API de conquistas é separada e mais complexa
-                'appid': steam_game_data['appid']
+                'playtime_steam': f"{playtime_hours}h",
+                'achievements_steam': achievements_count,
+                'appid': appid,
+                'cover_image': f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg",
+                'is_platinum': is_platinum
             }
 
-            if name.lower() in library_game_names:
-                games_to_update.append(game_payload)
+            # A comparação inteligente é feita aqui
+            normalized_steam_name = _normalize_name(name)
+            if normalized_steam_name in library_map:
+                existing_game = library_map[normalized_steam_name]
+                # Usa o nome original da planilha para manter a consistência
+                game_payload['name'] = existing_game.get('Nome') 
+                game_payload['playtime_local'] = f"{existing_game.get('Tempo de Jogo', 0)}h"
+                game_payload['achievements_local'] = existing_game.get('Conquistas Obtidas', 0)
+                return 'update', game_payload
             else:
-                new_games.append(game_payload)
+                return 'new', game_payload
 
-        # Ordena as listas alfabeticamente
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [executor.submit(enrich_game_data, game) for game in steam_games_filtered]
+            for future in as_completed(futures):
+                result_type, payload = future.result()
+                if result_type == 'new':
+                    new_games.append(payload)
+                else:
+                    games_to_update.append(payload)
+
         new_games.sort(key=lambda x: x['name'])
         games_to_update.sort(key=lambda x: x['name'])
 
         return {"new_games": new_games, "games_to_update": games_to_update}
 
     except requests.exceptions.RequestException as e:
-        print(f"ERRO ao buscar dados da Steam: {e}")
-        return {"error": "Falha ao comunicar com a API da Steam."}
+        return {"error": f"Falha ao comunicar com a API da Steam: {e}"}
     except Exception as e:
-        print(f"ERRO em get_steam_library: {e}"); traceback.print_exc()
+        traceback.print_exc()
         return {"error": "Ocorreu um erro interno ao processar a biblioteca da Steam."}
 
 
