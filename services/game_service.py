@@ -878,14 +878,19 @@ def get_steam_library():
             playtime_hours = round(game.get('playtime_forever', 0) / 60)
             
             # Busca conquistas
-            achievements_count = "N/A"
+            achievements_count = 0 
             try:
                 ach_url = f"http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appid}&key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}"
                 ach_response = requests.get(ach_url, timeout=5).json()
                 if ach_response.get('playerstats', {}).get('success') and 'achievements' in ach_response['playerstats']:
-                    achievements_count = len(ach_response['playerstats']['achievements'])
+                    # Filtra a lista para pegar apenas as conquistas com 'achieved' == 1
+                    unlocked_achievements = [
+                        ach for ach in ach_response['playerstats']['achievements'] if ach.get('achieved') == 1
+                    ]
+                    # Conta o tamanho da nova lista filtrada
+                    achievements_count = len(unlocked_achievements)
             except Exception:
-                pass # Ignora se a busca de conquistas falhar
+                pass # Se falhar, achievements_count permanecerá 0
 
             game_payload = {
                 'name': name,
