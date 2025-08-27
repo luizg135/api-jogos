@@ -878,28 +878,36 @@ def get_steam_library():
             playtime_hours = round(game.get('playtime_forever', 0) / 60)
             
             # Busca conquistas
-            achievements_count = 0 
+            achievements_count = 0
+            is_platinum = False # <-- NOVA VARIÁVEL
             try:
                 ach_url = f"http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appid}&key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}"
                 ach_response = requests.get(ach_url, timeout=5).json()
                 if ach_response.get('playerstats', {}).get('success') and 'achievements' in ach_response['playerstats']:
-                    # Filtra a lista para pegar apenas as conquistas com 'achieved' == 1
+                    all_achievements = ach_response['playerstats']['achievements']
+                    total_achievements = len(all_achievements)
+
                     unlocked_achievements = [
-                        ach for ach in ach_response['playerstats']['achievements'] if ach.get('achieved') == 1
+                        ach for ach in all_achievements if ach.get('achieved') == 1
                     ]
-                    # Conta o tamanho da nova lista filtrada
                     achievements_count = len(unlocked_achievements)
+
+                    # --- LÓGICA DO PLATINADO ---
+                    if total_achievements > 0 and achievements_count == total_achievements:
+                        is_platinum = True
+                    # --- FIM DA LÓGICA ---
+
             except Exception:
-                pass # Se falhar, achievements_count permanecerá 0
+                pass 
 
             game_payload = {
                 'name': name,
                 'playtime_steam': f"{playtime_hours}h",
                 'achievements_steam': achievements_count,
                 'appid': appid,
-                'cover_image': f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg"
+                'cover_image': f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg",
+                'is_platinum': is_platinum # <-- ADICIONA A INFORMAÇÃO AO RESULTADO
             }
-
             if name.lower() in library_map:
                 existing_game = library_map[name.lower()]
                 game_payload['playtime_local'] = f"{existing_game.get('Tempo de Jogo', 0)}h"
@@ -932,7 +940,7 @@ def get_steam_library():
 def sync_steam_games(games_to_sync):
     """
     Recebe uma lista de jogos selecionados, enriquece com dados da RAWG/DeepL
-    e adiciona/atualiza na planilha 'Jogos'.
+    e adiciona/atualiza na planilha 'Jogos', definindo o status como Platinado se aplicável.
     """
     try:
         sheet = _get_sheet('Jogos')
@@ -946,6 +954,7 @@ def sync_steam_games(games_to_sync):
 
         for game in games_to_sync:
             game_name = game.get('name')
+            is_platinum = game.get('is_platinum', False) # Pega a informação da etapa de enriquecimento
             
             rawg_data = {}
             if Config.RAWG_API_KEY:
@@ -981,6 +990,11 @@ def sync_steam_games(games_to_sync):
                     'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
                     'Conquistas Obtidas': game.get('achievements_steam', 0)
                 }
+                # Se o jogo foi platinado, atualiza o status também
+                if is_platinum:
+                    updated_data['Status'] = 'Platinado'
+                    updated_data['Platinado?'] = 'Sim'
+
                 update_game_in_sheet(game_name, updated_data)
                 updated_count += 1
             else:
@@ -988,7 +1002,9 @@ def sync_steam_games(games_to_sync):
                 new_game_data = {
                     'Nome': game_name,
                     'Plataforma': 'PC',
-                    'Status': 'Na Fila',
+                    # Define o Status com base na informação de platinado
+                    'Status': 'Platinado' if is_platinum else 'Na Fila',
+                    'Platinado?': 'Sim' if is_platinum else 'Não',
                     'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
                     'Conquistas Obtidas': game.get('achievements_steam', 0),
                     'Link': game.get('cover_image', ''),
