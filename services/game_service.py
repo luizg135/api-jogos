@@ -703,25 +703,65 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
     except Exception as e:
         print(f"ERRO na função get_random_game: {e}"); traceback.print_exc()
         return None
-        
+
 def get_similar_games_from_sheet(base_game_name: str):
     """
-    Busca jogos similares para um jogo base a partir da planilha 'Jogos Similares'.
+    Busca jogos similares na planilha. Se algum não tiver imagem, busca na API da RAWG
+    e atualiza a planilha antes de retornar os dados.
     """
     try:
-        print(f"[SERVICE] Buscando jogos similares para: '{base_game_name}' na planilha.")
-        all_similar_games = _get_data_from_sheet('Jogos Similares')
-        
-        if not all_similar_games:
-            print(f"[SERVICE] A planilha 'Jogos Similares' está vazia ou não foi encontrada.")
+        similar_sheet = _get_sheet('Jogos Similares')
+        if not similar_sheet:
             return []
 
+        all_similar_games = similar_sheet.get_all_records()
+        
         games_for_base = [
             game for game in all_similar_games 
             if game.get('Jogo Base') == base_game_name
         ]
         
-        print(f"[SERVICE] Encontrados {len(games_for_base)} jogos similares para '{base_game_name}'.")
+        if not games_for_base:
+            return []
+
+        updates_to_perform = []
+        
+        for game in games_for_base:
+            if not game.get('Imagem'):
+                game_name_to_search = game.get('Jogo Similar')
+                if not game_name_to_search:
+                    continue
+                
+                print(f"[API] Buscando imagem para '{game_name_to_search}' na RAWG...")
+                try:
+                    search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={requests.utils.quote(game_name_to_search)}&page_size=1"
+                    response = requests.get(search_url)
+                    response.raise_for_status()
+                    search_data = response.json()
+                    
+                    image_url = ''
+                    if search_data.get('results'):
+                        image_url = search_data['results'][0].get('background_image', '')
+                    
+                    game['Imagem'] = image_url
+                    
+                    try:
+                        cell = similar_sheet.find(game_name_to_search, in_column=2) # Busca na coluna "Jogo Similar"
+                        updates_to_perform.append({
+                            'range': f'F{cell.row}', # Coluna F é a de Imagem
+                            'values': [[image_url]]
+                        })
+                    except gspread.exceptions.CellNotFound:
+                        print(f"AVISO: Não foi possível encontrar a célula para '{game_name_to_search}' para atualizar a imagem.")
+
+                except requests.exceptions.RequestException as e:
+                    print(f"!!! ERRO ao buscar imagem para '{game_name_to_search}': {e}")
+
+        if updates_to_perform:
+            print(f"Atualizando {len(updates_to_perform)} URL(s) de imagem na planilha...")
+            similar_sheet.batch_update(updates_to_perform)
+            _invalidate_cache('Jogos Similares')
+
         return games_for_base
 
     except Exception as e:
