@@ -24,6 +24,6 @@ class Config:
     ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH', generate_password_hash('suasenha_padrao'))
 
     RAWG_API_KEY = os.environ.get('RAWG_API_KEY')
-    
-    # Nova chave para a API do DeepL
     DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
+    STEAM_API_KEY = os.environ.get('STEAM_API_KEY')
+    STEAM_USER_ID = os.environ.get('STEAM_USER_ID')
