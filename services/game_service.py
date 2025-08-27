@@ -540,9 +540,13 @@ async def _scrape_similar_games_async(game_title):
         
 def _add_similar_games_to_sheet(game_title):
     try:
-        client = _get_sheet('Jogos')._parent._client
-        spreadsheet_name = "database-jogos"
-        spreadsheet = client.open(spreadsheet_name)
+        # CORREÇÃO AQUI: Obtendo o cliente de uma forma independente e robusta
+        creds_json = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS_JSON)
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
+        client = gspread.authorize(creds)
+        spreadsheet = client.open_by_url(Config.GAME_SHEET_URL)
+        
         try:
             target_sheet = spreadsheet.worksheet("Jogos Similares")
             processed_titles_set = set(target_sheet.col_values(1))
@@ -551,11 +555,6 @@ def _add_similar_games_to_sheet(game_title):
             target_sheet = spreadsheet.add_worksheet(title="Jogos Similares", rows="100", cols="4")
             target_sheet.update([['Jogo Base', 'Jogo Similar', 'Plataformas', 'Metascore', 'URL']], 'A1:E1')
             processed_titles_set = set()
-        
-        # O script foi modificado para não pular jogos
-        # if normalize_game_name(game_title) in processed_titles_set:
-        #     print(f"Jogo '{game_title}' já foi processado. Pulando o scraping.")
-        #     return
         
         suggestions = asyncio.run(_scrape_similar_games_async(game_title))
         
