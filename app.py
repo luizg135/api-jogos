@@ -10,6 +10,8 @@ from routes.auth_routes import auth_bp
 
 app = Flask(__name__)
 
+print("--- APLICAÇÃO INICIADA COM SUCESSO (VERSÃO COM LOGS) ---")
+
 # Configurações do Flask e JWT a partir da classe Config
 app.config["JWT_SECRET_KEY"] = Config.JWT_SECRET_KEY
 jwt = JWTManager(app)
