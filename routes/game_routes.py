@@ -262,3 +262,42 @@ def get_similar_games_from_sheet_route(game_name):
         print(f"!!! ERRO NA ROTA /similar-games/{game_name}: {e}")
         traceback.print_exc()
         return jsonify({"error": "Ocorreu um erro interno ao buscar jogos similares.", "detalhes_tecnicos": str(e)}), 500
+
+# Em routes/game_routes.py, adicione estas duas rotas no final do arquivo
+
+@game_bp.route('/steam/library', methods=['GET'])
+@jwt_required()
+def get_steam_library_route():
+    """
+    Endpoint para buscar a biblioteca da Steam e comparar com a local.
+    """
+    try:
+        result = game_service.get_steam_library()
+        if "error" in result:
+            return jsonify(result), 500
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"!!! ERRO NA ROTA /steam/library: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Ocorreu um erro interno."}), 500
+
+@game_bp.route('/steam/sync', methods=['POST'])
+@jwt_required()
+def sync_steam_games_route():
+    """
+    Endpoint para receber a lista de jogos a serem sincronizados.
+    """
+    try:
+        games_to_sync = request.json.get('games', [])
+        if not games_to_sync:
+            return jsonify({"success": False, "message": "Nenhum jogo selecionado."}), 400
+        
+        result = game_service.sync_steam_games(games_to_sync)
+        if result.get("success"):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 500
+    except Exception as e:
+        print(f"!!! ERRO NA ROTA /steam/sync: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Ocorreu um erro interno no servidor."}), 500
