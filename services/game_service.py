@@ -714,55 +714,67 @@ def get_similar_games_from_sheet(base_game_name: str):
         if not similar_sheet:
             return []
 
-        all_similar_games = similar_sheet.get_all_records()
-        
-        games_for_base = [
-            game for game in all_similar_games 
-            if game.get('Jogo Base') == base_game_name
-        ]
-        
-        if not games_for_base:
+        # Usar get_all_values para preservar a ordem e obter os números das linhas
+        all_rows = similar_sheet.get_all_values()
+        if len(all_rows) < 2:  # Se não houver dados além do cabeçalho
+            return []
+
+        header = all_rows[0]
+        try:
+            # Encontra os índices das colunas que vamos usar
+            base_col_idx = header.index('Jogo Base')
+            similar_col_idx = header.index('Jogo Similar')
+            image_col_idx = header.index('Imagem')
+        except ValueError:
+            print("ERRO: Colunas 'Jogo Base', 'Jogo Similar' ou 'Imagem' não encontradas em 'Jogos Similares'.")
             return []
 
         updates_to_perform = []
+        games_for_frontend = []
         
-        for game in games_for_base:
-            if not game.get('Imagem'):
-                game_name_to_search = game.get('Jogo Similar')
-                if not game_name_to_search:
-                    continue
-                
-                print(f"[API] Buscando imagem para '{game_name_to_search}' na RAWG...")
-                try:
-                    search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={requests.utils.quote(game_name_to_search)}&page_size=1"
-                    response = requests.get(search_url)
-                    response.raise_for_status()
-                    search_data = response.json()
-                    
-                    image_url = ''
-                    if search_data.get('results'):
-                        image_url = search_data['results'][0].get('background_image', '')
-                    
-                    game['Imagem'] = image_url
-                    
-                    try:
-                        cell = similar_sheet.find(game_name_to_search, in_column=2) # Busca na coluna "Jogo Similar"
-                        updates_to_perform.append({
-                            'range': f'F{cell.row}', # Coluna F é a de Imagem
-                            'values': [[image_url]]
-                        })
-                    except gspread.exceptions.CellNotFound:
-                        print(f"AVISO: Não foi possível encontrar a célula para '{game_name_to_search}' para atualizar a imagem.")
+        # Itera sobre as linhas de dados (começando da segunda linha)
+        for i, row in enumerate(all_rows[1:]):
+            row_num = i + 2  # O número da linha na planilha (1-based + cabeçalho)
+            
+            # Garante que a linha tenha colunas suficientes para evitar IndexError
+            if len(row) <= base_col_idx:
+                continue
 
-                except requests.exceptions.RequestException as e:
-                    print(f"!!! ERRO ao buscar imagem para '{game_name_to_search}': {e}")
+            if row[base_col_idx] == base_game_name:
+                image_url = row[image_col_idx] if len(row) > image_col_idx and row[image_col_idx] else ''
+                game_name_to_search = row[similar_col_idx] if len(row) > similar_col_idx else ''
+
+                if not image_url and game_name_to_search:
+                    print(f"[API] Buscando imagem para '{game_name_to_search}' na RAWG...")
+                    try:
+                        search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={requests.utils.quote(game_name_to_search)}&page_size=1"
+                        response = requests.get(search_url)
+                        response.raise_for_status()
+                        search_data = response.json()
+                        
+                        if search_data.get('results'):
+                            image_url = search_data['results'][0].get('background_image', '')
+
+                        if image_url:
+                             updates_to_perform.append({
+                                'range': f'F{row_num}',  # Coluna F é a de Imagem
+                                'values': [[image_url]]
+                            })
+                    except requests.exceptions.RequestException as e:
+                        print(f"!!! ERRO ao buscar imagem para '{game_name_to_search}': {e}")
+                        image_url = ''  # Garante que seja uma string vazia em caso de erro
+
+                # Monta o dicionário para o frontend
+                game_dict = {header[j]: (row[j] if j < len(row) else '') for j in range(len(header))}
+                game_dict['Imagem'] = image_url # Garante que a imagem (nova ou antiga) esteja no dict
+                games_for_frontend.append(game_dict)
 
         if updates_to_perform:
             print(f"Atualizando {len(updates_to_perform)} URL(s) de imagem na planilha...")
-            similar_sheet.batch_update(updates_to_perform)
+            similar_sheet.batch_update(updates_to_perform, value_input_option='USER_ENTERED')
             _invalidate_cache('Jogos Similares')
 
-        return games_for_base
+        return games_for_frontend
 
     except Exception as e:
         print(f"!!! ERRO em get_similar_games_from_sheet: {e}")
