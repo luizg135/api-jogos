@@ -848,6 +848,82 @@ def get_steam_library():
         return {"error": "Ocorreu um erro interno ao processar a biblioteca da Steam."}
 
 
+# Em services/game_service.py, adicione estas duas funções no final do arquivo
+
+def get_steam_library():
+    """
+    Busca a biblioteca de jogos da Steam, enriquecendo com conquistas e capas,
+    compara com a planilha e retorna uma lista de jogos novos e a serem atualizados.
+    """
+    if not Config.STEAM_API_KEY or not Config.STEAM_USER_ID:
+        return {"error": "Credenciais da Steam não configuradas no servidor."}
+
+    try:
+        steam_url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}&format=json&include_appinfo=true"
+        response = requests.get(steam_url)
+        response.raise_for_status()
+        steam_games_raw = response.json().get('response', {}).get('games', [])
+        
+        steam_games_filtered = [game for game in steam_games_raw if game.get('playtime_forever', 0) > 0]
+
+        library_games = _get_data_from_sheet('Jogos')
+        library_map = {game.get('Nome').lower(): game for game in library_games}
+
+        new_games = []
+        games_to_update = []
+
+        def enrich_game_data(game):
+            appid = game['appid']
+            name = game['name']
+            playtime_hours = round(game.get('playtime_forever', 0) / 60)
+            
+            # Busca conquistas
+            achievements_count = "N/A"
+            try:
+                ach_url = f"http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appid}&key={Config.STEAM_API_KEY}&steamid={Config.STEAM_USER_ID}"
+                ach_response = requests.get(ach_url, timeout=5).json()
+                if ach_response.get('playerstats', {}).get('success') and 'achievements' in ach_response['playerstats']:
+                    achievements_count = len(ach_response['playerstats']['achievements'])
+            except Exception:
+                pass # Ignora se a busca de conquistas falhar
+
+            game_payload = {
+                'name': name,
+                'playtime_steam': f"{playtime_hours}h",
+                'achievements_steam': achievements_count,
+                'appid': appid,
+                'cover_image': f"https://steamcdn-a.akamaihd.net/steam/apps/{appid}/header.jpg"
+            }
+
+            if name.lower() in library_map:
+                existing_game = library_map[name.lower()]
+                game_payload['playtime_local'] = f"{existing_game.get('Tempo de Jogo', 0)}h"
+                game_payload['achievements_local'] = existing_game.get('Conquistas Obtidas', 0)
+                return 'update', game_payload
+            else:
+                return 'new', game_payload
+
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [executor.submit(enrich_game_data, game) for game in steam_games_filtered]
+            for future in as_completed(futures):
+                result_type, payload = future.result()
+                if result_type == 'new':
+                    new_games.append(payload)
+                else:
+                    games_to_update.append(payload)
+
+        new_games.sort(key=lambda x: x['name'])
+        games_to_update.sort(key=lambda x: x['name'])
+
+        return {"new_games": new_games, "games_to_update": games_to_update}
+
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Falha ao comunicar com a API da Steam: {e}"}
+    except Exception as e:
+        traceback.print_exc()
+        return {"error": "Ocorreu um erro interno ao processar a biblioteca da Steam."}
+
+
 def sync_steam_games(games_to_sync):
     """
     Recebe uma lista de jogos selecionados, enriquece com dados da RAWG/DeepL
@@ -865,10 +941,7 @@ def sync_steam_games(games_to_sync):
 
         for game in games_to_sync:
             game_name = game.get('name')
-            playtime = game.get('playtime')
-            achievements = game.get('achievements')
             
-            # Busca dados adicionais na RAWG
             rawg_data = {}
             if Config.RAWG_API_KEY:
                 try:
@@ -886,26 +959,22 @@ def sync_steam_games(games_to_sync):
                                 translator = deepl.Translator(Config.DEEPL_API_KEY)
                                 result = translator.translate_text(description, target_lang="PT-BR")
                                 translated_description = result.text
-                            except Exception as deepl_e:
-                                print(f"Erro no DeepL: {deepl_e}")
+                            except Exception: pass
 
                         rawg_data = {
                             'RAWG_ID': rawg_id,
-                            'Link': details_response.get('background_image', ''),
-                            'Estilo': ', '.join([g['name'] for g in details_response.get('genres', [])]),
+                            'Estilo': ', '.join([GENRE_TRANSLATIONS.get(g['name'], g['name']) for g in details_response.get('genres', [])]),
                             'Metacritic': details_response.get('metacritic', ''),
                             'Descricao': translated_description
                         }
                 except Exception as rawg_e:
                     print(f"Erro ao buscar dados da RAWG para '{game_name}': {rawg_e}")
 
-            # Verifica se o jogo já existe para decidir entre adicionar ou atualizar
             if game_name.lower() in library_map:
                 # ATUALIZA JOGO EXISTENTE
-                existing_game = library_map[game_name.lower()]
                 updated_data = {
-                    'Tempo de Jogo': int(playtime.replace('h','')),
-                    'Conquistas Obtidas': achievements if achievements != 'N/A' else existing_game.get('Conquistas Obtidas', 0)
+                    'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
+                    'Conquistas Obtidas': game.get('achievements_steam', 0)
                 }
                 update_game_in_sheet(game_name, updated_data)
                 updated_count += 1
@@ -913,10 +982,11 @@ def sync_steam_games(games_to_sync):
                 # ADICIONA NOVO JOGO
                 new_game_data = {
                     'Nome': game_name,
-                    'Plataforma': 'PC', # Padrão para jogos da Steam
+                    'Plataforma': 'PC',
                     'Status': 'Na Fila',
-                    'Tempo de Jogo': int(playtime.replace('h','')),
-                    'Conquistas Obtidas': achievements if achievements != 'N/A' else 0,
+                    'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
+                    'Conquistas Obtidas': game.get('achievements_steam', 0),
+                    'Link': game.get('cover_image', ''),
                     **rawg_data
                 }
                 add_game_to_sheet(new_game_data)
