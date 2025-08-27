@@ -8,13 +8,9 @@ class Config:
     GOOGLE_SHEETS_CREDENTIALS_JSON = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
     
     if not GOOGLE_SHEETS_CREDENTIALS_JSON:
-        # Se a variável de ambiente não estiver definida, é um erro crítico em produção.
-        # Caso esteja rodando localmente, você pode definir um caminho para um arquivo JSON
-        # Mas para o Render, esta variável deve ser preenchida.
         print("CRITICAL ERROR: GOOGLE_SHEETS_CREDENTIALS environment variable is not set!")
-        # Para evitar que o Render trave, vamos deixar o erro ser tratado mais abaixo.
 
-    # A URL da sua planilha. Altere 'SUA_PLANILHA_ID'
+    # A URL da sua planilha.
     GAME_SHEET_URL = os.environ.get(
         'GAME_SHEET_URL',
         'https://docs.google.com/spreadsheets/d/1xWeZ0p6v_wgp4WquyEJNRxSl-sijD3G7vKFZH8NaXLc/edit?usp=sharing'
@@ -25,5 +21,10 @@ class Config:
 
     RAWG_API_KEY = os.environ.get('RAWG_API_KEY')
     
-    # Nova chave para a API do DeepL
     DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
+
+    # --- NOVAS VARIÁVEIS PARA ACIONAR A GITHUB ACTION ---
+    GITHUB_PAT = os.environ.get('GITHUB_PAT') # Seu Personal Access Token do GitHub
+    GITHUB_OWNER = os.environ.get('GITHUB_OWNER') # Seu nome de usuário do GitHub
+    GITHUB_REPO = os.environ.get('GITHUB_REPO') # O nome do repositório do scraper
+    GITHUB_WORKFLOW_FILE_NAME = os.environ.get('GITHUB_WORKFLOW_FILE_NAME') # Ex: scraper.yml
