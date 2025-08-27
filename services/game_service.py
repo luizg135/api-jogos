@@ -703,3 +703,28 @@ def get_random_game(plataforma=None, estilo=None, metacritic_min=None, metacriti
     except Exception as e:
         print(f"ERRO na função get_random_game: {e}"); traceback.print_exc()
         return None
+        
+def get_similar_games_from_sheet(base_game_name: str):
+    """
+    Busca jogos similares para um jogo base a partir da planilha 'Jogos Similares'.
+    """
+    try:
+        print(f"[SERVICE] Buscando jogos similares para: '{base_game_name}' na planilha.")
+        all_similar_games = _get_data_from_sheet('Jogos Similares')
+        
+        if not all_similar_games:
+            print(f"[SERVICE] A planilha 'Jogos Similares' está vazia ou não foi encontrada.")
+            return []
+
+        games_for_base = [
+            game for game in all_similar_games 
+            if game.get('Jogo Base') == base_game_name
+        ]
+        
+        print(f"[SERVICE] Encontrados {len(games_for_base)} jogos similares para '{base_game_name}'.")
+        return games_for_base
+
+    except Exception as e:
+        print(f"!!! ERRO em get_similar_games_from_sheet: {e}")
+        traceback.print_exc()
+        return []
