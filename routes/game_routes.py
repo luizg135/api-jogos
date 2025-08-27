@@ -247,7 +247,7 @@ def get_wish_price_history(game_name):
         traceback.print_exc()
         return jsonify({"error": "Não foi possível obter o histórico de preços.", "detalhes_tecnicos": str(e)}), 500
 
-# --- NOVA ROTA: Jogos Similares da Planilha ---
+# --- ROTA FINAL E CORRETA PARA JOGOS SIMILARES ---
 @game_bp.route('/similar-games/<string:game_name>', methods=['GET'])
 @jwt_required()
 def get_similar_games_from_sheet_route(game_name):
