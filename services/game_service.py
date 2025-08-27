@@ -365,7 +365,7 @@ def get_all_game_data():
         base_stats = {
             'total_jogos': len(games_data), 'total_finalizados': len([g for g in games_data if g.get('Status') in ['Finalizado', 'Platinado']]),
             'total_platinados': len([g for g in games_data if g.get('Platinado?') == 'Sim']), 'total_avaliados': len([g for g in games_data if g.get('Nota') and float(str(g.get('Nota')).replace(',', '.')) > 0]),
-            'total_horas_jogadas': sum(tempos_de_jogo), 'custo_total_biblioteca': sum([float(str(g.get('Preço', '0,00')).replace('R$', '').replace(',', '.')) for g in games_data]),
+            'total_horas_jogadas': sum(tempos_de_jogo), 'custo_total_biblioteca': sum([safe_float_conversion(g.get('Preço')) for g in games_data]),
             'media_notas': sum(notas) / len(notas) if notas else 0, 'total_conquistas': sum([int(g.get('Conquistas Obtidas', 0)) for g in games_data]),
         }
 
@@ -987,6 +987,7 @@ def sync_steam_games(games_to_sync):
                     'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
                     'Conquistas Obtidas': game.get('achievements_steam', 0),
                     'Link': game.get('cover_image', ''),
+                    'Preço': 0,
                     **rawg_data
                 }
                 add_game_to_sheet(new_game_data)
