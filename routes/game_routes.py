@@ -232,7 +232,7 @@ def update_wishlist_prices():
         traceback.print_exc()
         return jsonify({"success": False, "message": "Erro no servidor ao tentar atualizar os preços."}), 500
 
-# --- ROTA: Histórico de Preços para um Jogo ---
+# --- NOVA ROTA: Histórico de Preços para um Jogo ---
 @game_bp.route('/wishlist/price-history/<string:game_name>', methods=['GET'])
 @jwt_required()
 def get_wish_price_history(game_name):
@@ -247,11 +247,13 @@ def get_wish_price_history(game_name):
         traceback.print_exc()
         return jsonify({"error": "Não foi possível obter o histórico de preços.", "detalhes_tecnicos": str(e)}), 500
 
+# --- NOVA ROTA: Jogos Similares da Planilha ---
 @game_bp.route('/similar-games/<string:game_name>', methods=['GET'])
 @jwt_required()
 def get_similar_games_from_sheet_route(game_name):
     """
-    Retorna uma lista de jogos similares pré-processados da planilha.
+    Retorna uma lista de jogos similares pré-processados da planilha,
+    buscando e salvando imagens se necessário.
     """
     try:
         similar_games = game_service.get_similar_games_from_sheet(game_name)
@@ -259,4 +261,4 @@ def get_similar_games_from_sheet_route(game_name):
     except Exception as e:
         print(f"!!! ERRO NA ROTA /similar-games/{game_name}: {e}")
         traceback.print_exc()
-        return jsonify({"error": "Ocorreu um erro interno.", "detalhes_tecnicos": str(e)}), 500
+        return jsonify({"error": "Ocorreu um erro interno ao buscar jogos similares.", "detalhes_tecnicos": str(e)}), 500
