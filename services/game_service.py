@@ -1024,7 +1024,8 @@ def get_steam_library():
 def sync_steam_games(games_to_sync):
     """
     Recebe uma lista de jogos selecionados, enriquece com dados da RAWG/DeepL
-    e adiciona/atualiza na planilha 'Jogos', definindo o status como Platinado se aplicável.
+    e adiciona/atualiza na planilha 'Jogos'. A imagem de capa para novos jogos
+    dará prioridade à RAWG, usando a da Steam como fallback.
     """
     try:
         sheet = _get_sheet('Jogos')
@@ -1038,9 +1039,13 @@ def sync_steam_games(games_to_sync):
 
         for game in games_to_sync:
             game_name = game.get('name')
-            is_platinum = game.get('is_platinum', False) # Pega a informação da etapa de enriquecimento
+            is_platinum = game.get('is_platinum', False)
             
+            # --- LÓGICA DE IMAGEM E DADOS DA RAWG ---
+            # Começamos com a imagem da Steam como fallback
+            final_cover_image = game.get('cover_image', '')
             rawg_data = {}
+
             if Config.RAWG_API_KEY:
                 try:
                     search_url = f"https://api.rawg.io/api/games?key={Config.RAWG_API_KEY}&search={requests.utils.quote(game_name)}&page_size=1"
@@ -1050,6 +1055,11 @@ def sync_steam_games(games_to_sync):
                         details_url = f"https://api.rawg.io/api/games/{rawg_id}?key={Config.RAWG_API_KEY}"
                         details_response = requests.get(details_url).json()
                         
+                        # Tenta pegar a imagem da RAWG. Se conseguir, ela se torna a imagem final.
+                        rawg_image = details_response.get('background_image')
+                        if rawg_image:
+                            final_cover_image = rawg_image
+
                         description = details_response.get('description_raw', '')
                         translated_description = description
                         if Config.DEEPL_API_KEY and description:
@@ -1067,6 +1077,7 @@ def sync_steam_games(games_to_sync):
                         }
                 except Exception as rawg_e:
                     print(f"Erro ao buscar dados da RAWG para '{game_name}': {rawg_e}")
+            # --- FIM DA LÓGICA DE IMAGEM ---
 
             if game_name.lower() in library_map:
                 # ATUALIZA JOGO EXISTENTE
@@ -1074,24 +1085,21 @@ def sync_steam_games(games_to_sync):
                     'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
                     'Conquistas Obtidas': game.get('achievements_steam', 0)
                 }
-                # Se o jogo foi platinado, atualiza o status também
                 if is_platinum:
                     updated_data['Status'] = 'Platinado'
                     updated_data['Platinado?'] = 'Sim'
-
                 update_game_in_sheet(game_name, updated_data)
                 updated_count += 1
             else:
                 # ADICIONA NOVO JOGO
                 new_game_data = {
                     'Nome': game_name,
-                    'Plataforma': 'PC',
-                    # Define o Status com base na informação de platinado
+                    'Plataforma': 'Computador',
                     'Status': 'Platinado' if is_platinum else 'Na Fila',
                     'Platinado?': 'Sim' if is_platinum else 'Não',
                     'Tempo de Jogo': int(game.get('playtime_steam', '0h').replace('h','')),
                     'Conquistas Obtidas': game.get('achievements_steam', 0),
-                    'Link': game.get('cover_image', ''),
+                    'Link': final_cover_image, # <-- USA A IMAGEM ESCOLHIDA (RAWG ou STEAM)
                     'Preço': 0,
                     **rawg_data
                 }
